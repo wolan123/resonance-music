@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fontsource/zcool-kuaile": "^5.2.5",
     "@fontsource-variable/outfit": "^5.2.5",
     "@phosphor-icons/react": "^2.1.7",
+    "@vercel/blob": "^2.6.1",
     "framer-motion": "^12.15.0",
     "music-metadata": "^11.14.0",
     "react": "^19.1.0",

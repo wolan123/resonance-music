@@ -2,54 +2,39 @@
 
 @theme {
   --font-sans: "Outfit Variable", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif;
 
-  --color-snow-50: #fffdf8;
-  --color-snow-100: #fff8ee;
-  --color-skin-50: #fff5f0;
-  --color-skin-100: #ffede5;
-  --color-skin-200: #ffddd0;
-  --color-skin-300: #ffc8b3;
+  --color-abyss-950: #05060a;
+  --color-abyss-900: #0a0c14;
+  --color-abyss-850: #0e111c;
+  --color-abyss-800: #141827;
+  --color-abyss-700: #1d2337;
 
-  --color-klee-300: #ff9c9f;
-  --color-klee-400: #f56f74;
-  --color-klee-500: #e5484d;
-  --color-klee-600: #d13b40;
-  --color-klee-700: #b22e33;
-  --color-klee-800: #8f2428;
-
-  --color-gold-100: #fff3d6;
-  --color-gold-200: #ffe9b8;
-  --color-gold-300: #ffd977;
-  --color-gold-400: #ffc53d;
-  --color-gold-500: #f5a623;
-
-  --color-cocoa-300: #c8a8a8;
-  --color-cocoa-400: #ad8585;
-  --color-cocoa-500: #8f6262;
-  --color-cocoa-700: #5e3b3b;
-  --color-cocoa-900: #3f2626;
+  --color-mist-100: #f4f4f8;
+  --color-mist-300: #c7cbe0;
+  --color-mist-500: #8b90a8;
+  --color-mist-700: #5b6077;
 }
 
 html {
+  color-scheme: dark;
   scroll-behavior: smooth;
 }
 
 body {
-  background: var(--color-snow-50);
-  color: var(--color-cocoa-700);
+  background: var(--color-abyss-950);
+  color: var(--color-mist-100);
   font-family: var(--font-sans);
   overflow-x: hidden;
 }
 
 ::selection {
-  background: var(--color-skin-300);
-  color: var(--color-cocoa-900);
+  background: rgba(139, 92, 246, 0.5);
+  color: #fff;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #f2c9c2 transparent;
+  scrollbar-color: #2a3050 transparent;
 }
 
 ::-webkit-scrollbar {
@@ -58,56 +43,83 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #f2c9c2;
+  background: #2a3050;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-klee-500);
+  outline: 2px solid var(--color-violet-500);
   outline-offset: 2px;
 }
 
 input[type="range"] {
-  accent-color: var(--color-klee-500);
+  accent-color: var(--color-violet-500);
   cursor: pointer;
 }
 
-@keyframes twinkle {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.7) rotate(0deg);
+.glass {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(18px);
+}
+
+.glass-strong {
+  background: rgba(13, 15, 26, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(24px);
+}
+
+.btn-glow {
+  background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+  color: #fff;
+  box-shadow:
+    0 6px 22px rgba(139, 92, 246, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.btn-glow:hover {
+  filter: brightness(1.12);
+  box-shadow:
+    0 8px 30px rgba(6, 182, 212, 0.42),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.btn-glow:active {
+  transform: scale(0.96);
+}
+
+.text-glow {
+  text-shadow:
+    0 0 24px rgba(139, 92, 246, 0.55),
+    0 0 60px rgba(6, 182, 212, 0.35);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
   }
-  50% {
+  to {
     opacity: 1;
-    transform: scale(1.15) rotate(20deg);
+    transform: none;
   }
 }
 
-.animate-twinkle {
-  animation: twinkle 2.6s ease-in-out infinite;
-}
-
-@keyframes bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-7px);
-  }
-}
-
-.animate-bob {
-  animation: bob 3.2s ease-in-out infinite;
+.animate-fade-up {
+  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
 
 @keyframes pop-in {
   from {
     opacity: 0;
-    transform: scale(0.85) translateY(8px);
+    transform: scale(0.88) translateY(10px);
   }
   to {
     opacity: 1;
@@ -117,22 +129,6 @@ input[type="range"] {
 
 .animate-pop {
   animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.animate-fade-up {
-  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--i, 0) * 40ms);
 }
 
 @keyframes eq {
@@ -147,58 +143,50 @@ input[type="range"] {
 
 .eq-bar {
   transform-origin: bottom;
-  animation: eq 1s ease-in-out infinite;
+  animation: eq 0.9s ease-in-out infinite;
 }
 
-@keyframes glow-pulse {
+@keyframes pulse-ring {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.45), 0 8px 22px rgba(229, 72, 77, 0.35);
+    box-shadow:
+      0 0 0 0 rgba(139, 92, 246, 0.5),
+      0 6px 24px rgba(6, 182, 212, 0.35);
   }
   50% {
-    box-shadow: 0 0 0 10px rgba(229, 72, 77, 0), 0 8px 26px rgba(229, 72, 77, 0.45);
+    box-shadow:
+      0 0 0 12px rgba(139, 92, 246, 0),
+      0 6px 32px rgba(139, 92, 246, 0.5);
   }
 }
 
-.glow-pulse {
-  animation: glow-pulse 1.8s ease-in-out infinite;
+.pulse-ring {
+  animation: pulse-ring 1.8s ease-in-out infinite;
 }
 
-.btn-boom {
-  background: linear-gradient(135deg, var(--color-klee-400), var(--color-klee-600));
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(229, 72, 77, 0.32);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.2s ease,
-    filter 0.2s ease;
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(30px, -24px, 0) scale(1.08);
+  }
 }
 
-.btn-boom:hover {
-  filter: brightness(1.06);
-  box-shadow: 0 10px 26px rgba(229, 72, 77, 0.42);
-}
-
-.btn-boom:active {
-  transform: scale(0.96);
-}
-
-.card-klee {
-  background: #fff;
-  border: 1px solid var(--color-skin-200);
-  box-shadow: 0 10px 30px rgba(229, 72, 77, 0.08);
+.animate-float-slow {
+  animation: float-slow 14s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
-  .animate-twinkle,
-  .animate-bob,
   .animate-fade-up,
   .animate-pop,
   .eq-bar,
-  .glow-pulse {
+  .pulse-ring,
+  .animate-float-slow {
     animation: none;
   }
 }

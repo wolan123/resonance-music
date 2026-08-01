@@ -1,5 +1,3 @@
-const ITUNES_SEARCH = 'https://itunes.apple.com/search'
-
 function hashString(str) {
   let h = 5381
   for (let i = 0; i < str.length; i += 1) {
@@ -9,11 +7,11 @@ function hashString(str) {
 }
 
 const ART_PALETTE = [
-  ['#e5484d', '#ffc53d'],
-  ['#f56f74', '#ffd977'],
-  ['#b22e33', '#f5a623'],
-  ['#ff9c9f', '#ffe9b8'],
-  ['#8f2428', '#ffc53d'],
+  ['#4c1d95', '#06b6d4'],
+  ['#7c3aed', '#f472b6'],
+  ['#1e40af', '#22d3ee'],
+  ['#831843', '#8b5cf6'],
+  ['#0e7490', '#a78bfa'],
 ]
 
 export function fallbackArtwork(seed = 'music', size = 300) {
@@ -25,69 +23,40 @@ export function fallbackArtwork(seed = 'music', size = 300) {
     `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>` +
     `</linearGradient></defs>` +
     `<rect width="${size}" height="${size}" fill="url(#g)"/>` +
-    `<text x="50%" y="54%" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.42)}" font-weight="700" fill="rgba(255,255,255,0.94)" text-anchor="middle" dominant-baseline="middle">${letter}</text>` +
+    `<text x="50%" y="54%" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.42)}" font-weight="700" fill="rgba(255,255,255,0.9)" text-anchor="middle" dominant-baseline="middle">${letter}</text>` +
     `</svg>`
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
 export function artworkOf(track) {
-  return track?.artworkUrl || track?.artwork || fallbackArtwork(track?.artist || track?.title || 'music')
+  return track?.artworkUrl || fallbackArtwork(track?.artist || track?.title || 'music')
 }
 
-function itunesToTrack(item) {
-  const art = (item.artworkUrl100 || '').replace('100x100bb', '300x300bb')
-  return {
-    id: `it-${item.trackId}`,
-    source: 'online',
-    title: item.trackName || '未知曲目',
-    artist: item.artistName || '未知歌手',
-    album: item.collectionName || '',
-    artwork: art || fallbackArtwork(item.artistName || item.trackName),
-    preview: item.previewUrl,
-    durationMs: item.trackTimeMillis || 0,
-    genre: item.primaryGenreName || '',
-  }
+export async function fetchSongs() {
+  const res = await fetch('/api/tracks', { signal: AbortSignal.timeout(15000) })
+  if (!res.ok) throw new Error('歌曲列表加载失败')
+  const data = await res.json()
+  return Array.isArray(data.songs) ? data.songs : []
 }
 
-function dedupe(tracks) {
-  const seen = new Set()
-  return tracks.filter((t) => {
-    const key = `${t.title}|${t.artist}`.toLowerCase()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
+export async function registerSong(payload) {
+  const res = await fetch('/api/tracks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '歌曲登记失败')
+  return data.song
 }
 
-async function fetchJson(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
-
-export async function searchTracks(query) {
-  const term = query.trim()
-  if (!term) throw new Error('请输入搜索关键词')
-
-  async function itunesSearch(country) {
-    const url = new URL(ITUNES_SEARCH)
-    url.searchParams.set('term', term)
-    url.searchParams.set('media', 'music')
-    url.searchParams.set('entity', 'song')
-    url.searchParams.set('limit', '30')
-    if (country) url.searchParams.set('country', country)
-    const json = await fetchJson(url)
-    return dedupe((json.results || []).map(itunesToTrack).filter((t) => t.preview))
-  }
-
-  let lastError
-  try {
-    const tracks = await itunesSearch()
-    if (tracks.length) return tracks
-    const cnTracks = await itunesSearch('CN')
-    if (cnTracks.length) return cnTracks
-  } catch (e) {
-    lastError = e
-  }
-  throw new Error(lastError ? '搜索服务暂时不可用，请稍后重试' : '没有找到相关音乐，换个关键词试试')
+export async function deleteSong(id) {
+  const res = await fetch('/api/tracks', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '删除失败')
+  return true
 }

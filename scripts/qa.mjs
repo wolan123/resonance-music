@@ -7,11 +7,12 @@ const BASE = process.env.BASE_URL || 'http://localhost:4173'
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const SHOT_DIR = process.env.SHOT_DIR || '.'
 
-// --- generate a small test WAV + LRC pair ---
-const dir = mkdtempSync(path.join(tmpdir(), 'klee-qa-'))
-const wavPath = path.join(dir, '蹦蹦测试歌.wav')
+// --- generate a test WAV + LRC pair with a unique name ---
+const dir = mkdtempSync(path.join(tmpdir(), 'lumen-qa-'))
+const songName = `qa-song-${Date.now().toString(36)}`
+const wavPath = path.join(dir, `${songName}.wav`)
 const sr = 22050
-const seconds = 1.2
+const seconds = 6
 const n = Math.floor(sr * seconds)
 const dataSize = n * 2
 const buf = Buffer.alloc(44 + dataSize)
@@ -33,8 +34,8 @@ for (let i = 0; i < n; i += 1) {
   buf.writeInt16LE(v, 44 + i * 2)
 }
 writeFileSync(wavPath, buf)
-const lrcPath = path.join(dir, '蹦蹦测试歌.lrc')
-writeFileSync(lrcPath, '[00:00.00]蹦蹦测试歌词第一行\n[00:01.00]蹦蹦测试歌词第二行\n', 'utf8')
+const lrcPath = path.join(dir, `${songName}.lrc`)
+writeFileSync(lrcPath, '[00:00.00]QA歌词第一行\n[00:02.00]QA歌词第二行\n', 'utf8')
 
 async function clickByText(page, text) {
   await page.evaluate((t) => {
@@ -50,35 +51,66 @@ const browser = await puppeteer.launch({
 })
 const page = await browser.newPage()
 await page.setViewport({ width: 1440, height: 960 })
+page.on('dialog', (d) => d.accept())
 
 const errors = []
 page.on('console', (m) => {
   if (m.type() === 'error') errors.push(m.text())
 })
 page.on('pageerror', (e) => errors.push(String(e)))
+page.on('requestfailed', (r) => errors.push(`REQFAIL ${r.url()} ${r.failure()?.errorText || ''}`))
+page.on('response', (r) => {
+  if (r.status() >= 400) errors.push(`HTTP ${r.status()} ${r.url()}`)
+})
 
 const results = {}
 await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 })
 
 results.brand = await page
-  .waitForFunction(() => document.body.innerText.includes('蹦蹦音乐'), { timeout: 15000 })
+  .waitForFunction(() => document.body.innerText.includes('LUMEN 流光音乐'), { timeout: 15000 })
   .then(() => true)
   .catch(() => false)
-results.uploadZone = await page
-  .waitForFunction(() => document.body.innerText.includes('把歌拖进来'), { timeout: 15000 })
+results.hall = await page
+  .waitForFunction(() => document.body.innerText.includes('都有一片光'), { timeout: 15000 })
+  .then(() => true)
+  .catch(() => false)
+
+// --- go to upload view ---
+await clickByText(page, '上传')
+results.uploadView = await page
+  .waitForFunction(() => document.body.innerText.includes('拖进来，或者点这里选择文件'), { timeout: 10000 })
   .then(() => true)
   .catch(() => false)
 
 // --- upload WAV + LRC ---
 const input = await page.$('input[type="file"]')
 await input.uploadFile(wavPath, lrcPath)
-results.uploaded = await page
-  .waitForFunction(() => document.body.innerText.includes('蹦蹦测试歌'), { timeout: 20000 })
+results.parsed = await page
+  .waitForFunction(() => document.body.innerText.includes('自动读取了元数据和封面'), { timeout: 20000 })
   .then(() => true)
   .catch(() => false)
-await new Promise((r) => setTimeout(r, 900))
 
-// --- play the local track ---
+await clickByText(page, '发布到音乐大厅')
+await new Promise((r) => setTimeout(r, 4000))
+results.publishErrorShown = await page.evaluate(() => {
+  const m = document.body.innerText.match(/(读取歌曲信息失败[^\n]*|上传失败[^\n]*)/)
+  return m ? m[0] : ''
+})
+results.debugState = await page.evaluate((name) => ({
+  url: location.href,
+  onUploadView: document.body.innerText.includes('上传音乐'),
+  onHall: document.body.innerText.includes('音乐大厅'),
+  hasSongText: document.body.innerText.includes(name),
+  hasUploader: document.body.innerText.includes('匿名听众'),
+  h1: document.querySelector('h1')?.textContent || '',
+}), songName)
+results.published = await page
+  .waitForFunction(() => document.body.innerText.includes('匿名听众'), { timeout: 40000 })
+  .then(() => true)
+  .catch(() => false)
+
+// --- play the uploaded song (it is the first row) ---
+await new Promise((r) => setTimeout(r, 800))
 const playBtn = await page.$('button[aria-label^="播放"]')
 if (playBtn) {
   await playBtn.click()
@@ -90,7 +122,7 @@ results.isPlaying = !!(await page.$('button[aria-label="暂停"]'))
 // --- lyrics panel ---
 await clickByText(page, '歌词')
 results.lyricsPanel = await page
-  .waitForFunction(() => document.body.innerText.includes('蹦蹦测试歌词第一行'), { timeout: 10000 })
+  .waitForFunction((name) => document.body.innerText.includes('QA歌词第一行'), { timeout: 10000 }, songName)
   .then(() => true)
   .catch(() => false)
 await page.evaluate(() => {
@@ -98,47 +130,55 @@ await page.evaluate(() => {
   if (b) b.click()
 })
 
-// --- visualizer ---
+// --- immersive light canvas + toggle ---
 results.canvas = !!(await page.$('canvas'))
-await clickByText(page, '光效')
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '光效')
+  if (b) b.click()
+})
 await new Promise((r) => setTimeout(r, 500))
 results.canvasAfterToggleOff = !!(await page.$('canvas'))
-await clickByText(page, '光效')
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '光效')
+  if (b) b.click()
+})
 await new Promise((r) => setTimeout(r, 300))
 results.canvasAfterToggleOn = !!(await page.$('canvas'))
 
-// --- online search ---
-await clickByText(page, '在线搜索')
-await page.waitForFunction(() => document.body.innerText.includes('输入关键词'), { timeout: 8000 }).catch(() => {})
-const searchInput = await page.$('input[aria-label="搜索音乐"]')
-await searchInput.type('周杰伦')
-await page.click('button[type="submit"]')
-results.searchShown = await page
-  .waitForFunction(() => document.body.innerText.includes('找到'), { timeout: 20000 })
-  .then(() => true)
-  .catch(() => false)
-results.searchRows = await page.$$eval('button[aria-label^="播放"]', (bs) => bs.length)
-
 // --- favorites ---
-await clickByText(page, '我的音乐')
-await new Promise((r) => setTimeout(r, 700))
 const favBtn = await page.$('button[aria-label="收藏"]')
 if (favBtn) {
   await favBtn.click()
   results.favorited = true
 }
-await clickByText(page, '我的收藏')
+await clickByText(page, '收藏')
 results.favoritesShown = await page
-  .waitForFunction(() => document.body.innerText.includes('蹦蹦测试歌'), { timeout: 8000 })
+  .waitForFunction((name) => document.body.innerText.includes(name), { timeout: 10000 }, songName)
   .then(() => true)
   .catch(() => false)
+
+// --- cleanup: delete the uploaded song ---
+await clickByText(page, '音乐大厅')
+await page.waitForFunction(() => document.body.innerText.includes('都有一片光'), { timeout: 10000 }).catch(() => {})
+const delBtn = await page
+  .waitForSelector('button[aria-label^="删除"]', { timeout: 10000 })
+  .catch(() => null)
+if (delBtn) {
+  await delBtn.click()
+  results.deleted = await page
+    .waitForFunction((name) => !document.body.innerText.includes(name), { timeout: 15000 }, songName)
+    .then(() => true)
+    .catch(() => false)
+} else {
+  results.deleted = false
+}
 
 results.errors = errors.slice(0, 10)
 console.log(JSON.stringify(results, null, 2))
 
 await page.setViewport({ width: 390, height: 844 })
-await page.screenshot({ path: path.join(SHOT_DIR, 'qa-klee-mobile.png') })
+await page.screenshot({ path: path.join(SHOT_DIR, 'qa-lumen-mobile.png') })
 await page.setViewport({ width: 1440, height: 960 })
-await page.screenshot({ path: path.join(SHOT_DIR, 'qa-klee-desktop.png') })
+await page.screenshot({ path: path.join(SHOT_DIR, 'qa-lumen-desktop.png') })
 
 await browser.close()
