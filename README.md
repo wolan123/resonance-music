@@ -2,6 +2,8 @@
 
 一个可直接使用的在线音乐网站：搜索歌曲、30 秒试听、收藏喜欢的音乐。数据与试听片段来自 Apple 公开音乐接口（iTunes Search / RSS），版权归原作者所有。
 
+线上地址：[resonance-music-ten.vercel.app](https://resonance-music-ten.vercel.app)
+
 ## 功能
 
 - 搜索歌曲、歌手、专辑（iTunes Search）
