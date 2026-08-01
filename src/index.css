@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit Variable", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink-950: #121110;
+  --color-ink-900: #181714;
+  --color-ink-850: #1d1b17;
+  --color-ink-800: #252219;
+  --color-ink-700: #353124;
+
+  --color-cream-50: #f5f1e7;
+  --color-cream-200: #ddd6c4;
+  --color-cream-400: #b3ab97;
+
+  --color-accent-200: #f2c0a7;
+  --color-accent-300: #e9a183;
+  --color-accent-400: #de8763;
+  --color-accent-500: #d06d47;
+  --color-accent-600: #b95a36;
+  --color-accent-700: #96462a;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink-950);
+  font-family: var(--font-sans);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a362c transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a362c;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-400);
+  outline-offset: 2px;
+}
+
+input[type="range"] {
+  accent-color: var(--color-accent-500);
+  cursor: pointer;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none;
+  }
+  .eq-bar {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+}
