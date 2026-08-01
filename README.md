@@ -1,16 +1,20 @@
-# 共鸣 · Resonance
+# 蹦蹦音乐 · Boom Music
 
-一个可直接使用的在线音乐网站：搜索歌曲、30 秒试听、收藏喜欢的音乐。数据与试听片段来自 Apple 公开音乐接口（iTunes Search / RSS），版权归原作者所有。
+可莉风格的个人音乐网站：把本地音乐上传到浏览器，随时听歌、看歌词、享受光感特效。也可在线搜索试听。
 
-线上地址：[resonance-music-ten.vercel.app](https://resonance-music-ten.vercel.app)
+线上地址：https://resonance-music-ten.vercel.app
 
 ## 功能
 
-- 搜索歌曲、歌手、专辑（iTunes Search）
-- 今日热门推荐（iTunes 全球榜单，失败时自动切换到多品类搜索）
-- 底部常驻播放器：播放/暂停、上一首/下一首、进度拖动、音量控制、空格键快捷播放
-- 收藏夹本地持久化（localStorage）
-- 移动端 / 桌面端响应式布局，深色暖橙主题
+- 可莉风格 UI：暖白 + 克莱红 + 金色星星，站酷快乐体，蹦蹦炸弹 logo
+- 本地音乐库：拖拽或选择文件上传（MP3 / FLAC / M4A / WAV / OGG），音乐保存在浏览器 IndexedDB，刷新不丢失
+- 自动读取歌曲元数据：标题、歌手、专辑、封面、时长（`music-metadata`）
+- 歌词：自动读取音频内嵌歌词；支持上传 `.lrc` 文件自动配对；没有歌词时可通过 lrclib 在线搜索
+- 同步歌词面板：随播放自动滚动高亮，点击歌词可跳转
+- 光感特效：Web Audio 频谱可视化、低音光晕、漂浮星星粒子，可一键开关
+- 在线搜索：iTunes 搜索 30 秒试听片段
+- 收藏夹：本地与在线歌曲统一收藏
+- 响应式布局：桌面侧边栏 + 移动端底部导航
 
 ## 本地运行
 
@@ -19,17 +23,15 @@ npm install
 npm run dev
 ```
 
-构建：
+构建与预览：
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## 部署
+## 说明
 
-纯静态站点，可直接部署到 Vercel、Netlify 或 GitHub Pages：
-
-```bash
-vercel --prod
-```
+- 上传的音乐只存在当前浏览器本地（IndexedDB），换浏览器或清除站点数据会清空，不会上传到服务器。
+- 在线试听与歌词搜索依赖第三方公开接口（iTunes / lrclib），可用性受网络影响。
+- 版权归原作者所有，请仅上传自己拥有版权的音乐。

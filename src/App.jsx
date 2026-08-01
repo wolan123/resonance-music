@@ -1,58 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import {
-  ArrowClockwise,
-  Compass,
-  Heart,
-  MusicNotes,
-  WarningCircle,
-  Waveform,
-} from '@phosphor-icons/react'
+import { Heart, MusicNotes } from '@phosphor-icons/react'
 import Sidebar from './components/Sidebar'
-import SearchBar from './components/SearchBar'
 import TrackRow from './components/TrackRow'
-import TrackCard from './components/TrackCard'
 import PlayerBar from './components/PlayerBar'
-import { SkeletonCard, SkeletonRows } from './components/Skeleton'
-import { fetchTrending, searchTracks } from './lib/api'
+import LyricsPanel from './components/LyricsPanel'
+import VisualizerCanvas from './components/VisualizerCanvas'
+import LibraryView from './components/LibraryView'
+import SearchView from './components/SearchView'
+import FavoritesView from './components/FavoritesView'
+import { BombIcon, SparkleIcon } from './components/KleeIcons'
+import { searchTracks } from './lib/api'
+import { deleteTrack as deleteDbTrack, getAllTracks, getTrack, putTrack } from './lib/db'
+import { parseAudioFile } from './lib/metadata'
+import { fetchLyrics as fetchLyricsApi } from './lib/lyricsApi'
+import { getAnalyser } from './lib/visualizer'
 import { loadFavorites, loadVolume, saveFavorites, saveVolume } from './lib/storage'
 
-function ErrorState({ message, onRetry }) {
+const TABS = [
+  { key: 'library', label: '音乐' },
+  { key: 'search', label: '搜索' },
+  { key: 'favorites', label: '收藏' },
+]
+
+function toMemoryTrack(record) {
+  let audioUrl = null
+  let artworkUrl = null
+  try {
+    audioUrl = URL.createObjectURL(record.audioBlob)
+  } catch {
+    audioUrl = null
+  }
+  if (record.artworkBlob) {
+    try {
+      artworkUrl = URL.createObjectURL(record.artworkBlob)
+    } catch {
+      artworkUrl = null
+    }
+  }
+  return { ...record, audioUrl, artworkUrl }
+}
+
+function KleeBackground() {
   return (
-    <div className="mt-5 flex flex-col items-start gap-4 rounded-2xl border border-white/8 bg-ink-900/60 p-8">
-      <WarningCircle size={28} className="text-accent-400" />
-      <div>
-        <p className="font-medium">{message || '出错了'}</p>
-        <p className="mt-1 text-sm text-cream-400">网络或音乐接口暂时不可用，请稍后重试。</p>
-      </div>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="flex items-center gap-2 rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-[0.98]"
-        >
-          <ArrowClockwise size={16} />
-          重试
-        </button>
-      )}
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+      <div className="absolute -left-28 -top-28 h-80 w-80 rounded-full bg-gold-200/50 blur-3xl" />
+      <div className="absolute -right-24 top-1/4 h-96 w-96 rounded-full bg-skin-200/70 blur-3xl" />
+      <div className="absolute bottom-10 left-1/4 h-72 w-72 rounded-full bg-gold-100/60 blur-3xl" />
+      <SparkleIcon className="absolute left-[6%] top-[16%] h-6 w-6 text-gold-400 animate-twinkle" />
+      <SparkleIcon className="absolute right-[8%] top-[28%] h-4 w-4 text-klee-300 animate-twinkle" />
+      <SparkleIcon className="absolute left-[12%] top-[55%] h-5 w-5 text-klee-300 animate-twinkle" />
+      <SparkleIcon className="absolute right-[16%] top-[62%] h-6 w-6 text-gold-300 animate-twinkle" />
     </div>
   )
 }
 
-function EmptyFavorites({ onDiscover }) {
+function Toasts({ toasts }) {
   return (
-    <div className="mt-6 flex flex-col items-start gap-4 rounded-2xl border border-dashed border-white/12 bg-ink-900/40 p-10">
-      <Heart size={32} className="text-cream-400/50" />
-      <div>
-        <p className="text-lg font-medium">还没有收藏任何歌曲</p>
-        <p className="mt-1 text-sm text-cream-400">去发现页找一首喜欢的歌，点一下心形就能收藏。</p>
-      </div>
-      <button
-        onClick={onDiscover}
-        className="flex items-center gap-2 rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-[0.98]"
-      >
-        <Compass size={16} />
-        去发现
-      </button>
+    <div className="pointer-events-none fixed right-4 top-4 z-[70] flex flex-col items-end gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-skin-200 bg-white px-4 py-3 text-sm font-medium text-cocoa-700 shadow-[0_12px_32px_rgba(229,72,77,0.16)] animate-pop"
+        >
+          <SparkleIcon className="h-4 w-4 shrink-0 text-gold-500" />
+          {t.text}
+        </div>
+      ))}
     </div>
   )
 }
@@ -61,47 +75,89 @@ export default function App() {
   const [audio] = useState(() => new Audio())
   const reducedMotion = useReducedMotion()
 
-  const [view, setView] = useState('discover')
+  const [view, setView] = useState('library')
+  const [library, setLibrary] = useState([])
+  const [libraryLoading, setLibraryLoading] = useState(true)
+  const [uploading, setUploading] = useState({ active: false, current: '', done: 0, total: 0 })
+  const [filter, setFilter] = useState('')
+
   const [query, setQuery] = useState('')
-  const [trending, setTrending] = useState([])
-  const [trendingLoading, setTrendingLoading] = useState(true)
-  const [trendingError, setTrendingError] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState('')
+
   const [favorites, setFavorites] = useState(loadFavorites)
+  const [lrcMap, setLrcMap] = useState({})
+  const [toasts, setToasts] = useState([])
 
   const [queue, setQueue] = useState([])
   const [index, setIndex] = useState(-1)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
   const [volume, setVolume] = useState(loadVolume)
+  const [visualizerOn, setVisualizerOn] = useState(true)
+  const [analyser, setAnalyser] = useState(null)
+  const [lyricsOpen, setLyricsOpen] = useState(false)
+
   const queueRef = useRef(queue)
   const indexRef = useRef(index)
+  const libraryRef = useRef(library)
+  const lrcMapRef = useRef(lrcMap)
+  const analyserRef = useRef(null)
+  const visualizerOnRef = useRef(visualizerOn)
 
   useEffect(() => {
     queueRef.current = queue
   }, [queue])
-
   useEffect(() => {
     indexRef.current = index
   }, [index])
+  useEffect(() => {
+    libraryRef.current = library
+  }, [library])
+  useEffect(() => {
+    lrcMapRef.current = lrcMap
+  }, [lrcMap])
+  useEffect(() => {
+    visualizerOnRef.current = visualizerOn
+  }, [visualizerOn])
 
-  const loadTrending = useCallback(async () => {
-    setTrendingLoading(true)
-    setTrendingError('')
-    try {
-      const tracks = await fetchTrending()
-      setTrending(tracks)
-    } catch (e) {
-      setTrendingError(e.message || '加载失败')
-    } finally {
-      setTrendingLoading(false)
-    }
+  const toast = useCallback((text) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setToasts((prev) => [...prev, { id, text }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3200)
   }, [])
 
+  const ensureAnalyser = useCallback(() => {
+    if (analyserRef.current) return analyserRef.current
+    const a = getAnalyser(audio)
+    analyserRef.current = a
+    if (a) setAnalyser(a)
+    return a
+  }, [audio])
+
   useEffect(() => {
-    loadTrending()
-  }, [loadTrending])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const records = await getAllTracks()
+        const mems = records
+          .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
+          .map(toMemoryTrack)
+        if (!cancelled) {
+          libraryRef.current = mems
+          setLibrary(mems)
+        }
+      } catch (e) {
+        if (!cancelled) toast(`音乐库加载失败：${e.message}`)
+      } finally {
+        if (!cancelled) setLibraryLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [toast])
 
   useEffect(() => {
     saveFavorites(favorites)
@@ -120,15 +176,16 @@ export default function App() {
       indexRef.current = safe
       setIndex(safe)
       const track = list[safe]
-      audio.src = track.preview
+      audio.src = track.audioUrl || track.preview
       audio.play().catch(() => {})
+      if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio],
+    [audio, ensureAnalyser],
   )
 
   const playTrack = useCallback(
     (track, list) => {
-      const target = list || queueRef.current
+      const target = list && list.length ? list : queueRef.current
       if (!target.length) return
       queueRef.current = target
       setQueue(target)
@@ -136,14 +193,14 @@ export default function App() {
       const safe = idx < 0 ? 0 : idx
       indexRef.current = safe
       setIndex(safe)
-      audio.src = track.preview
+      audio.src = track.audioUrl || track.preview
       audio.play().catch(() => {})
+      if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio],
+    [audio, ensureAnalyser],
   )
 
   const next = useCallback(() => playAt(indexRef.current + 1), [playAt])
-
   const prev = useCallback(() => {
     if (audio.currentTime > 3) {
       audio.currentTime = 0
@@ -154,20 +211,27 @@ export default function App() {
 
   const togglePlay = useCallback(() => {
     if (indexRef.current < 0) return
-    if (audio.paused) audio.play().catch(() => {})
-    else audio.pause()
-  }, [audio])
+    if (audio.paused) {
+      if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
+      audio.play().catch(() => {})
+    } else {
+      audio.pause()
+    }
+  }, [audio, ensureAnalyser])
 
   useEffect(() => {
     const onPlay = () => setIsPlaying(true)
     const onPause = () => setIsPlaying(false)
+    const onTime = () => setCurrentTime(audio.currentTime || 0)
     const onEnded = () => next()
     audio.addEventListener('play', onPlay)
     audio.addEventListener('pause', onPause)
+    audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('ended', onEnded)
     return () => {
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
+      audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('ended', onEnded)
     }
   }, [audio, next])
@@ -184,16 +248,192 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [togglePlay])
 
-  const currentTrack = index >= 0 && index < queue.length ? queue[index] : null
-  const isFav = (track) => favorites.some((t) => t.id === track.id)
-  const toggleFavorite = (track) =>
-    setFavorites((prev) =>
-      prev.some((t) => t.id === track.id) ? prev.filter((t) => t.id !== track.id) : [track, ...prev],
-    )
+  const isFav = useCallback((track) => favorites.some((f) => f.id === track.id), [favorites])
 
-  const handleSearch = async (q) => {
+  const toggleFavorite = useCallback(
+    (track) => {
+      setFavorites((prev) => {
+        if (prev.some((f) => f.id === track.id)) return prev.filter((f) => f.id !== track.id)
+        const entry =
+          track.source === 'local'
+            ? { id: track.id, source: 'local', title: track.title, artist: track.artist, addedAt: Date.now() }
+            : { source: 'online', addedAt: Date.now(), ...track }
+        return [entry, ...prev]
+      })
+    },
+    [],
+  )
+
+  const getLrcText = useCallback((track) => {
+    if (!track) return null
+    return lrcMapRef.current[track.id] ?? track.lrc ?? null
+  }, [])
+
+  const attachLrc = useCallback(
+    async (track, text) => {
+      if (!text || !track) return
+      if (track.source === 'local') {
+        try {
+          const record = await getTrack(track.id)
+          if (record) {
+            record.lrc = text
+            record.lrcSource = 'file'
+            await putTrack(record)
+          }
+        } catch {
+          /* ignore */
+        }
+        setLibrary((prev) => prev.map((t) => (t.id === track.id ? { ...t, lrc: text } : t)))
+        libraryRef.current = libraryRef.current.map((t) => (t.id === track.id ? { ...t, lrc: text } : t))
+      }
+      lrcMapRef.current = { ...lrcMapRef.current, [track.id]: text }
+      setLrcMap({ ...lrcMapRef.current })
+    },
+    [],
+  )
+
+  const fetchLyricsFor = useCallback(
+    async (track) => {
+      if (!track) return null
+      const existing = getLrcText(track)
+      if (existing) return existing
+      const found = await fetchLyricsApi(track)
+      if (!found) return null
+      const text = found.synced || found.plain || null
+      if (text) {
+        lrcMapRef.current = { ...lrcMapRef.current, [track.id]: text }
+        setLrcMap({ ...lrcMapRef.current })
+        if (track.source === 'local') {
+          try {
+            const record = await getTrack(track.id)
+            if (record) {
+              record.lrc = text
+              record.lrcSource = record.lrcSource || 'online'
+              await putTrack(record)
+            }
+          } catch {
+            /* ignore */
+          }
+          setLibrary((prev) => prev.map((t) => (t.id === track.id ? { ...t, lrc: text } : t)))
+          libraryRef.current = libraryRef.current.map((t) => (t.id === track.id ? { ...t, lrc: text } : t))
+        }
+      }
+      return text
+    },
+    [getLrcText],
+  )
+
+  const removeTrack = useCallback(
+    async (track) => {
+      try {
+        await deleteDbTrack(track.id)
+      } catch {
+        /* ignore */
+      }
+      if (queueRef.current[indexRef.current]?.id === track.id) {
+        audio.pause()
+        setIndex(-1)
+        setQueue([])
+        queueRef.current = []
+        indexRef.current = -1
+      }
+      try {
+        URL.revokeObjectURL(track.audioUrl)
+        if (track.artworkUrl) URL.revokeObjectURL(track.artworkUrl)
+      } catch {
+        /* ignore */
+      }
+      setLibrary((prev) => prev.filter((t) => t.id !== track.id))
+      libraryRef.current = libraryRef.current.filter((t) => t.id !== track.id)
+      setFavorites((prev) => prev.filter((f) => !(f.source === 'local' && f.id === track.id)))
+      toast(`《${track.title}》已从背包删除`)
+    },
+    [audio, toast],
+  )
+
+  const handleFiles = useCallback(
+    async (files) => {
+      const audioFiles = []
+      const lrcFiles = []
+      for (const f of files) {
+        const name = f.name.toLowerCase()
+        if (name.endsWith('.lrc')) lrcFiles.push(f)
+        else if (f.type.startsWith('audio/') || /\.(mp3|m4a|flac|wav|ogg|opus|aac|mp4)$/.test(name)) audioFiles.push(f)
+      }
+      if (!audioFiles.length && !lrcFiles.length) {
+        toast('好像没有音乐文件哦，再检查一下？')
+        return
+      }
+      setUploading({ active: true, current: '', done: 0, total: audioFiles.length })
+      let added = 0
+      let skipped = 0
+      let failed = 0
+      for (let i = 0; i < audioFiles.length; i += 1) {
+        const file = audioFiles[i]
+        setUploading((u) => ({ ...u, current: file.name, done: i }))
+        try {
+          const parsed = await parseAudioFile(file)
+          const dup = libraryRef.current.some((t) => t.fileName === file.name && t.size === file.size)
+          if (dup) {
+            skipped += 1
+            continue
+          }
+          const id = crypto.randomUUID
+            ? crypto.randomUUID()
+            : `loc-${Date.now()}-${Math.random().toString(36).slice(2)}`
+          const record = {
+            id,
+            source: 'local',
+            fileName: file.name,
+            size: file.size,
+            title: parsed.title,
+            artist: parsed.artist,
+            album: parsed.album,
+            durationMs: parsed.durationMs,
+            artworkBlob: parsed.artworkBlob,
+            audioBlob: file,
+            lrc: parsed.lrc,
+            lrcSource: parsed.lrc ? 'embedded' : null,
+            addedAt: Date.now(),
+          }
+          await putTrack(record)
+          const mem = toMemoryTrack(record)
+          libraryRef.current = [mem, ...libraryRef.current]
+          setLibrary([...libraryRef.current])
+          if (parsed.lrc) {
+            lrcMapRef.current = { ...lrcMapRef.current, [id]: parsed.lrc }
+            setLrcMap({ ...lrcMapRef.current })
+          }
+          added += 1
+        } catch {
+          failed += 1
+        }
+      }
+      for (const lf of lrcFiles) {
+        try {
+          const base = lf.name.replace(/\.lrc$/i, '').toLowerCase()
+          const match = libraryRef.current.find(
+            (t) => t.fileName.replace(/\.[^.]+$/, '').toLowerCase() === base,
+          )
+          if (match) {
+            const text = await lf.text()
+            await attachLrc(match, text)
+            toast(`歌词已配对：《${match.title}》`)
+          }
+        } catch {
+          failed += 1
+        }
+      }
+      setUploading({ active: false, current: '', done: 0, total: 0 })
+      if (added) toast(`装进背包 ${added} 首歌！`)
+      if (skipped) toast(`${skipped} 首歌已经存在，跳过啦`)
+      if (failed) toast(`${failed} 个文件处理失败`)
+    },
+    [attachLrc, toast],
+  )
+
+  const handleSearch = useCallback(async (q) => {
     setQuery(q)
-    setView('discover')
     setSearching(true)
     setSearchError('')
     try {
@@ -205,157 +445,126 @@ export default function App() {
     } finally {
       setSearching(false)
     }
-  }
+  }, [])
 
-  const sectionAnim = {
-    initial: { opacity: 0, y: 12 },
-    animate: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: -8 },
-    transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] },
-  }
-  const noMotion = reducedMotion ? { initial: false } : sectionAnim
+  const toggleVisualizer = useCallback(() => {
+    setVisualizerOn((v) => {
+      const next = !v
+      if (next && !analyserRef.current) {
+        const a = getAnalyser(audio)
+        analyserRef.current = a
+        if (a) setAnalyser(a)
+      }
+      return next
+    })
+  }, [audio])
+
+  const currentTrack = index >= 0 && index < queue.length ? queue[index] : null
+  const currentLrc = getLrcText(currentTrack)
+  const favoriteTracks = favorites
+    .map((f) => (f.source === 'local' ? library.find((t) => t.id === f.id) : f))
+    .filter(Boolean)
+
+  const anim = reducedMotion
+    ? { initial: false }
+    : {
+        initial: { opacity: 0, y: 14 },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: -8 },
+        transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
+      }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-ink-950 text-cream-50">
-      <Sidebar view={view} onChangeView={setView} favoriteCount={favorites.length} />
+    <div className="relative min-h-[100dvh]">
+      <KleeBackground />
+      {visualizerOn && <VisualizerCanvas analyser={analyser} playing={isPlaying} />}
 
-      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-white/8 bg-ink-950/90 px-4 py-3 backdrop-blur lg:hidden">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500 text-ink-950">
-          <Waveform size={18} weight="fill" />
+      <Sidebar view={view} onChangeView={setView} favoriteCount={favorites.length} trackCount={library.length} />
+
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-skin-200 bg-snow-50/90 px-4 py-2.5 backdrop-blur lg:hidden">
+        <div className="relative">
+          <BombIcon className="h-9 w-9" />
+          <SparkleIcon className="absolute -right-1 -top-1 h-3.5 w-3.5 text-gold-400 animate-twinkle" />
         </div>
-        <p className="font-bold tracking-tight">共鸣</p>
-        <div className="ml-auto flex rounded-xl bg-ink-850 p-1" role="tablist" aria-label="导航">
-          {[
-            { key: 'discover', label: '发现' },
-            { key: 'favorites', label: '收藏' },
-          ].map((item) => (
+        <p className="font-display text-lg font-bold text-cocoa-900">蹦蹦音乐</p>
+        <div className="ml-auto flex rounded-2xl border border-skin-200 bg-white p-1 shadow-sm">
+          {TABS.map((tab) => (
             <button
-              key={item.key}
-              onClick={() => setView(item.key)}
-              role="tab"
-              aria-selected={view === item.key}
-              className={`rounded-lg px-3.5 py-1.5 text-sm transition ${
-                view === item.key ? 'bg-ink-800 text-accent-300' : 'text-cream-400'
+              key={tab.key}
+              onClick={() => setView(tab.key)}
+              aria-selected={view === tab.key}
+              className={`rounded-xl px-3 py-1.5 text-[13px] font-semibold transition ${
+                view === tab.key ? 'bg-klee-500 text-white' : 'text-cocoa-500'
               }`}
             >
-              {item.label}
-              {item.key === 'favorites' && favorites.length > 0 && ` (${favorites.length})`}
+              {tab.label}
             </button>
           ))}
         </div>
+        <button
+          onClick={toggleVisualizer}
+          aria-pressed={visualizerOn}
+          aria-label="光效开关"
+          className={`flex h-9 w-9 items-center justify-center rounded-xl transition active:scale-90 ${
+            visualizerOn ? 'bg-klee-500 text-white' : 'border border-skin-200 bg-white text-cocoa-500'
+          }`}
+        >
+          <SparkleIcon className="h-4 w-4" />
+        </button>
       </header>
 
-      <main className="flex-1 pb-44 lg:pb-32 lg:pl-72">
+      <main className="relative z-10 pb-44 lg:pb-36 lg:pl-72">
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-10">
           <AnimatePresence mode="wait">
-            {view === 'discover' && !query ? (
-              <motion.section key="home" {...noMotion} className="pt-8 lg:pt-14">
-                <p className="text-sm font-semibold uppercase tracking-[0.25em] text-accent-400">Resonance</p>
-                <h1 className="mt-3 max-w-2xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                  让每一首歌
-                  <br />
-                  都有回响
-                </h1>
-                <p className="mt-4 max-w-[65ch] text-base leading-relaxed text-cream-400">
-                  搜索你喜欢的音乐，在线试听，把动人的旋律收进你的收藏夹。
-                </p>
-                <div className="mt-8 max-w-2xl">
-                  <SearchBar onSearch={handleSearch} loading={searching} />
-                </div>
-
-                <div className="mt-14">
-                  <div className="flex items-end justify-between">
-                    <h2 className="text-xl font-semibold tracking-tight">今日热门</h2>
-                    <p className="text-xs text-cream-400/70">试听片段来自公开音乐接口</p>
-                  </div>
-                  {trendingLoading ? (
-                    <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                      {Array.from({ length: 10 }).map((_, i) => (
-                        <SkeletonCard key={i} />
-                      ))}
-                    </div>
-                  ) : trendingError ? (
-                    <ErrorState message={trendingError} onRetry={loadTrending} />
-                  ) : (
-                    <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                      {trending.map((track, i) => (
-                        <TrackCard
-                          key={track.id}
-                          track={track}
-                          index={i}
-                          isActive={currentTrack?.id === track.id}
-                          isPlaying={isPlaying && currentTrack?.id === track.id}
-                          isFavorite={isFav(track)}
-                          onPlay={(t) => playTrack(t, trending)}
-                          onToggleFavorite={toggleFavorite}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.section>
-            ) : view === 'discover' ? (
-              <motion.section key={`search-${query}`} {...noMotion} className="pt-8 lg:pt-12">
-                <div className="max-w-2xl">
-                  <SearchBar onSearch={handleSearch} loading={searching} />
-                </div>
-                {searching ? (
-                  <SkeletonRows count={8} />
-                ) : searchError ? (
-                  <ErrorState message={searchError} onRetry={() => handleSearch(query)} />
-                ) : (
-                  <div className="mt-8">
-                    <div className="flex items-center justify-between gap-4">
-                      <p aria-live="polite" className="text-sm text-cream-400">
-                        “{query}” 的搜索结果 · {results.length} 首
-                      </p>
-                      <button
-                        onClick={() => setQuery('')}
-                        className="shrink-0 text-xs text-accent-300 underline-offset-4 transition hover:underline"
-                      >
-                        返回热门推荐
-                      </button>
-                    </div>
-                    <div className="mt-3 rounded-2xl border border-white/8 bg-ink-900/60 p-2">
-                      {results.map((track, i) => (
-                        <TrackRow
-                          key={track.id}
-                          track={track}
-                          index={i}
-                          isActive={currentTrack?.id === track.id}
-                          isPlaying={isPlaying && currentTrack?.id === track.id}
-                          isFavorite={isFav(track)}
-                          onPlay={(t) => playTrack(t, results)}
-                          onToggleFavorite={toggleFavorite}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </motion.section>
-            ) : (
-              <motion.section key="favorites" {...noMotion} className="pt-8 lg:pt-12">
-                <h2 className="text-2xl font-semibold tracking-tight">我的收藏</h2>
-                <p className="mt-1 text-sm text-cream-400">共 {favorites.length} 首歌曲</p>
-                {favorites.length === 0 ? (
-                  <EmptyFavorites onDiscover={() => setView('discover')} />
-                ) : (
-                  <div className="mt-6 rounded-2xl border border-white/8 bg-ink-900/60 p-2">
-                    {favorites.map((track, i) => (
-                      <TrackRow
-                        key={track.id}
-                        track={track}
-                        index={i}
-                        isActive={currentTrack?.id === track.id}
-                        isPlaying={isPlaying && currentTrack?.id === track.id}
-                        isFavorite
-                        onPlay={(t) => playTrack(t, favorites)}
-                        onToggleFavorite={toggleFavorite}
-                      />
-                    ))}
-                  </div>
-                )}
-              </motion.section>
+            {view === 'library' && (
+              <motion.div key="library" {...anim}>
+                <LibraryView
+                  tracks={library}
+                  loading={libraryLoading}
+                  currentTrack={currentTrack}
+                  isPlaying={isPlaying}
+                  isFav={isFav}
+                  hasLyrics={getLrcText}
+                  onPlay={playTrack}
+                  onToggleFavorite={toggleFavorite}
+                  onDelete={removeTrack}
+                  uploading={uploading}
+                  onFiles={handleFiles}
+                  filter={filter}
+                  onFilterChange={setFilter}
+                />
+              </motion.div>
+            )}
+            {view === 'search' && (
+              <motion.div key={`search-${query}`} {...anim}>
+                <SearchView
+                  query={query}
+                  searching={searching}
+                  error={searchError}
+                  results={results}
+                  onSearch={handleSearch}
+                  currentTrack={currentTrack}
+                  isPlaying={isPlaying}
+                  isFav={isFav}
+                  hasLyrics={getLrcText}
+                  onPlay={playTrack}
+                  onToggleFavorite={toggleFavorite}
+                />
+              </motion.div>
+            )}
+            {view === 'favorites' && (
+              <motion.div key="favorites" {...anim}>
+                <FavoritesView
+                  tracks={favoriteTracks}
+                  currentTrack={currentTrack}
+                  isPlaying={isPlaying}
+                  isFav={isFav}
+                  hasLyrics={getLrcText}
+                  onPlay={playTrack}
+                  onToggleFavorite={toggleFavorite}
+                  onGoLibrary={() => setView('library')}
+                />
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
@@ -364,15 +573,38 @@ export default function App() {
       <PlayerBar
         track={currentTrack}
         isPlaying={isPlaying && !!currentTrack}
+        currentTime={currentTime}
         onTogglePlay={togglePlay}
         onNext={next}
         onPrev={prev}
-        onToggleFavorite={currentTrack ? () => toggleFavorite(currentTrack) : undefined}
+        onToggleFavorite={toggleFavorite}
         isFavorite={currentTrack ? isFav(currentTrack) : false}
         audio={audio}
         volume={volume}
         onVolumeChange={setVolume}
+        onOpenLyrics={() => setLyricsOpen(true)}
+        hasLyrics={!!currentLrc}
+        visualizerOn={visualizerOn}
+        onToggleVisualizer={toggleVisualizer}
       />
+
+      <LyricsPanel
+        open={lyricsOpen}
+        track={currentTrack}
+        lrc={currentLrc}
+        currentTime={currentTime}
+        onClose={() => setLyricsOpen(false)}
+        onFetchLyrics={fetchLyricsFor}
+        onSeek={(t) => {
+          try {
+            audio.currentTime = t
+          } catch {
+            /* ignore */
+          }
+        }}
+      />
+
+      <Toasts toasts={toasts} />
     </div>
   )
 }

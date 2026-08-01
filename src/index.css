@@ -2,37 +2,54 @@
 
 @theme {
   --font-sans: "Outfit Variable", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif;
 
-  --color-ink-950: #121110;
-  --color-ink-900: #181714;
-  --color-ink-850: #1d1b17;
-  --color-ink-800: #252219;
-  --color-ink-700: #353124;
+  --color-snow-50: #fffdf8;
+  --color-snow-100: #fff8ee;
+  --color-skin-50: #fff5f0;
+  --color-skin-100: #ffede5;
+  --color-skin-200: #ffddd0;
+  --color-skin-300: #ffc8b3;
 
-  --color-cream-50: #f5f1e7;
-  --color-cream-200: #ddd6c4;
-  --color-cream-400: #b3ab97;
+  --color-klee-300: #ff9c9f;
+  --color-klee-400: #f56f74;
+  --color-klee-500: #e5484d;
+  --color-klee-600: #d13b40;
+  --color-klee-700: #b22e33;
+  --color-klee-800: #8f2428;
 
-  --color-accent-200: #f2c0a7;
-  --color-accent-300: #e9a183;
-  --color-accent-400: #de8763;
-  --color-accent-500: #d06d47;
-  --color-accent-600: #b95a36;
-  --color-accent-700: #96462a;
+  --color-gold-100: #fff3d6;
+  --color-gold-200: #ffe9b8;
+  --color-gold-300: #ffd977;
+  --color-gold-400: #ffc53d;
+  --color-gold-500: #f5a623;
+
+  --color-cocoa-300: #c8a8a8;
+  --color-cocoa-400: #ad8585;
+  --color-cocoa-500: #8f6262;
+  --color-cocoa-700: #5e3b3b;
+  --color-cocoa-900: #3f2626;
 }
 
 html {
-  color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--color-ink-950);
+  background: var(--color-snow-50);
+  color: var(--color-cocoa-700);
   font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-skin-300);
+  color: var(--color-cocoa-900);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a362c transparent;
+  scrollbar-color: #f2c9c2 transparent;
 }
 
 ::-webkit-scrollbar {
@@ -41,20 +58,65 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a362c;
+  background: #f2c9c2;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent-400);
+  outline: 2px solid var(--color-klee-500);
   outline-offset: 2px;
 }
 
 input[type="range"] {
-  accent-color: var(--color-accent-500);
+  accent-color: var(--color-klee-500);
   cursor: pointer;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(20deg);
+  }
+}
+
+.animate-twinkle {
+  animation: twinkle 2.6s ease-in-out infinite;
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.animate-bob {
+  animation: bob 3.2s ease-in-out infinite;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-pop {
+  animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 @keyframes fade-up {
@@ -70,7 +132,7 @@ input[type="range"] {
 
 .animate-fade-up {
   animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--i, 0) * 45ms);
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
 
 @keyframes eq {
@@ -88,12 +150,55 @@ input[type="range"] {
   animation: eq 1s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-fade-up {
-    animation: none;
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.45), 0 8px 22px rgba(229, 72, 77, 0.35);
   }
-  .eq-bar {
+  50% {
+    box-shadow: 0 0 0 10px rgba(229, 72, 77, 0), 0 8px 26px rgba(229, 72, 77, 0.45);
+  }
+}
+
+.glow-pulse {
+  animation: glow-pulse 1.8s ease-in-out infinite;
+}
+
+.btn-boom {
+  background: linear-gradient(135deg, var(--color-klee-400), var(--color-klee-600));
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(229, 72, 77, 0.32);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.btn-boom:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 10px 26px rgba(229, 72, 77, 0.42);
+}
+
+.btn-boom:active {
+  transform: scale(0.96);
+}
+
+.card-klee {
+  background: #fff;
+  border: 1px solid var(--color-skin-200);
+  box-shadow: 0 10px 30px rgba(229, 72, 77, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-twinkle,
+  .animate-bob,
+  .animate-fade-up,
+  .animate-pop,
+  .eq-bar,
+  .glow-pulse {
     animation: none;
-    transform: scaleY(0.6);
   }
 }

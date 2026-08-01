@@ -1,5 +1,4 @@
 const ITUNES_SEARCH = 'https://itunes.apple.com/search'
-const ITUNES_TOP = 'https://itunes.apple.com/rss/topsongs/limit=30/json'
 
 function hashString(str) {
   let h = 5381
@@ -10,12 +9,11 @@ function hashString(str) {
 }
 
 const ART_PALETTE = [
-  ['#8a4f36', '#d06d47'],
-  ['#4f5d3a', '#788c5d'],
-  ['#3f5568', '#6a9bcc'],
-  ['#5d4a66', '#9b7bb5'],
-  ['#6b5b3a', '#b89a58'],
-  ['#3a5f56', '#5d9b8c'],
+  ['#e5484d', '#ffc53d'],
+  ['#f56f74', '#ffd977'],
+  ['#b22e33', '#f5a623'],
+  ['#ff9c9f', '#ffe9b8'],
+  ['#8f2428', '#ffc53d'],
 ]
 
 export function fallbackArtwork(seed = 'music', size = 300) {
@@ -27,16 +25,20 @@ export function fallbackArtwork(seed = 'music', size = 300) {
     `<stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/>` +
     `</linearGradient></defs>` +
     `<rect width="${size}" height="${size}" fill="url(#g)"/>` +
-    `<text x="50%" y="54%" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.42)}" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle" dominant-baseline="middle">${letter}</text>` +
+    `<text x="50%" y="54%" font-family="Arial, sans-serif" font-size="${Math.round(size * 0.42)}" font-weight="700" fill="rgba(255,255,255,0.94)" text-anchor="middle" dominant-baseline="middle">${letter}</text>` +
     `</svg>`
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+export function artworkOf(track) {
+  return track?.artworkUrl || track?.artwork || fallbackArtwork(track?.artist || track?.title || 'music')
 }
 
 function itunesToTrack(item) {
   const art = (item.artworkUrl100 || '').replace('100x100bb', '300x300bb')
   return {
     id: `it-${item.trackId}`,
-    provider: 'itunes',
+    source: 'online',
     title: item.trackName || '未知曲目',
     artist: item.artistName || '未知歌手',
     album: item.collectionName || '',
@@ -44,26 +46,6 @@ function itunesToTrack(item) {
     preview: item.previewUrl,
     durationMs: item.trackTimeMillis || 0,
     genre: item.primaryGenreName || '',
-  }
-}
-
-function rssEntryToTrack(entry) {
-  const id = entry?.id?.attributes?.['im:id'] || hashString(entry?.['im:name']?.label || '')
-  const images = entry?.['im:image'] || []
-  const art = (images[images.length - 1]?.label || '').replace('170x170bb', '300x300bb')
-  const preview = (entry?.link || []).find((l) => l?.attributes?.rel === 'enclosure')?.attributes?.href
-  const title = entry?.['im:name']?.label
-  const artist = entry?.['im:artist']?.label
-  return {
-    id: `rss-${id}`,
-    provider: 'itunes',
-    title: title || '未知曲目',
-    artist: artist || '未知歌手',
-    album: entry?.['im:collection']?.label || '',
-    artwork: art || fallbackArtwork(artist || title),
-    preview,
-    durationMs: 0,
-    genre: entry?.category?.attributes?.label || '',
   }
 }
 
@@ -108,33 +90,4 @@ export async function searchTracks(query) {
     lastError = e
   }
   throw new Error(lastError ? '搜索服务暂时不可用，请稍后重试' : '没有找到相关音乐，换个关键词试试')
-}
-
-export async function fetchTrending() {
-  try {
-    const json = await fetchJson(ITUNES_TOP)
-    const tracks = dedupe((json.feed?.entry || []).map(rssEntryToTrack).filter((t) => t.preview))
-    if (tracks.length) return tracks
-  } catch {
-    /* fall through */
-  }
-
-  // Fallback: curated searches across genres, run in parallel
-  const curated = ['周杰伦', 'Taylor Swift', 'Ed Sheeran', 'jazz', 'electronic', 'classical']
-  const settled = await Promise.allSettled(
-    curated.map(async (q) => {
-      const url = new URL(ITUNES_SEARCH)
-      url.searchParams.set('term', q)
-      url.searchParams.set('media', 'music')
-      url.searchParams.set('entity', 'song')
-      url.searchParams.set('limit', '8')
-      const json = await fetchJson(url)
-      return (json.results || []).map(itunesToTrack)
-    }),
-  )
-  const tracks = dedupe(
-    settled.flatMap((s) => (s.status === 'fulfilled' ? s.value : [])).filter((t) => t.preview),
-  ).slice(0, 30)
-  if (!tracks.length) throw new Error('暂时无法获取推荐歌曲，请稍后重试')
-  return tracks
 }

@@ -16,20 +16,20 @@ export default function SearchBar({ onSearch, loading = false }) {
     <div className="space-y-4">
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-2 rounded-2xl border border-white/10 bg-ink-850 p-2 pl-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition focus-within:border-accent-500/60"
+        className="flex items-center gap-2 rounded-full border border-skin-200 bg-white p-2 pl-5 shadow-[0_8px_24px_rgba(229,72,77,0.08)] transition focus-within:border-klee-400"
       >
-        <MagnifyingGlass size={20} className="shrink-0 text-cream-400" />
+        <MagnifyingGlass size={20} className="shrink-0 text-cocoa-300" />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="搜索歌曲、歌手、专辑…"
           aria-label="搜索音乐"
-          className="w-full bg-transparent py-2 text-base text-cream-50 placeholder:text-cream-400/70 focus:outline-none"
+          className="w-full bg-transparent py-2 text-base text-cocoa-900 placeholder:text-cocoa-300 focus:outline-none"
         />
         <button
           type="submit"
           disabled={loading}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-ink-950 transition hover:bg-accent-400 active:scale-[0.98] disabled:opacity-60"
+          className="btn-boom flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
         >
           {loading ? <Spinner size={16} className="animate-spin" /> : <MagnifyingGlass size={16} weight="bold" />}
           搜索
@@ -43,7 +43,7 @@ export default function SearchBar({ onSearch, loading = false }) {
               setValue(tag)
               onSearch(tag)
             }}
-            className="rounded-full border border-white/10 bg-ink-850 px-3.5 py-1.5 text-sm text-cream-200 transition hover:border-accent-500/50 hover:text-accent-300 active:scale-[0.98]"
+            className="rounded-full border border-skin-200 bg-white px-3.5 py-1.5 text-sm text-cocoa-500 transition hover:border-klee-300 hover:text-klee-600 active:scale-[0.97]"
           >
             {tag}
           </button>

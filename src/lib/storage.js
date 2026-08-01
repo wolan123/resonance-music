@@ -1,5 +1,5 @@
-const FAVORITES_KEY = 'resonance.favorites.v1'
-const VOLUME_KEY = 'resonance.volume.v1'
+const FAVORITES_KEY = 'klee.favorites.v2'
+const VOLUME_KEY = 'klee.volume.v1'
 
 export function loadFavorites() {
   try {
