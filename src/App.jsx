@@ -356,7 +356,7 @@ export default function App() {
 
   const currentTrack = index >= 0 && index < queue.length ? queue[index] : null
   const currentLrc = getLrcText(currentTrack)
-  const canDelete = (track) => !!user && (!track.userId || track.userId === user.id)
+  const canDelete = (track) => !!user && (track.userId === user.id || (user.isAdmin && !track.userId))
 
   // auto network lyrics matching when a song without lyrics starts
   useEffect(() => {

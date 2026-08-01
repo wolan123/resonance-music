@@ -50,7 +50,13 @@ export default async function handler(req, res) {
       const all = await readAllSongs()
       const target = all.find((s) => s.id === id)
       if (!target) return res.status(404).json({ error: '歌曲不存在' })
-      if (target.userId && target.userId !== user.id) {
+      const admins = String(process.env.ADMIN_USERNAMES || '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+      const isAdmin = admins.includes(String(user.username).toLowerCase())
+      const canDelete = target.userId === user.id || (isAdmin && !target.userId)
+      if (!canDelete) {
         return res.status(403).json({ error: '只能删除自己上传的歌曲' })
       }
       const urls = [target.audioUrl, target.artworkUrl].filter(Boolean)

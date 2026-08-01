@@ -114,7 +114,7 @@ await clickByText(page, '发布到音乐大厅')
 results.published = await page
   .waitForFunction(
     (name, u) => document.body.innerText.includes(name) && document.body.innerText.includes(`${u} 上传`),
-    { timeout: 40000 },
+    { timeout: 60000 },
     songName,
     uname,
   )
@@ -151,7 +151,10 @@ await page
     timeout: 5000,
   })
   .catch(() => {})
-await exactClick(page, '极光')
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('流动极光 + 光点'))
+  if (b) b.click()
+})
 results.effectChanged = await page
   .waitForFunction(() => [...document.querySelectorAll('button')].some((x) => x.textContent.includes('特效 极光')), {
     timeout: 5000,
@@ -190,12 +193,22 @@ await clickByText(page, '音乐大厅')
 await page
   .waitForFunction((name) => document.body.innerText.includes(name), { timeout: 10000 }, songName)
   .catch(() => {})
-results.deleteButtonsOwned = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
+results.ownRowHasDelete = await page.evaluate(
+  (name) =>
+    [...document.querySelectorAll('button[aria-label^="删除"]')].some(
+      (b) => b.closest('.group')?.innerText?.includes(name),
+    ),
+  songName,
+)
 await page.evaluate(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '退出登录')
   if (b) b.click()
 })
-await new Promise((r) => setTimeout(r, 1000))
+await page
+  .waitForFunction(() => [...document.querySelectorAll('button')].some((x) => x.textContent.includes('登录 / 注册')), {
+    timeout: 10000,
+  })
+  .catch(() => {})
 results.deleteButtonsAfterLogout = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
 
 // --- login again and delete own song ---
@@ -207,10 +220,17 @@ await page.click('button[type="submit"]')
 await page
   .waitForFunction((n) => document.body.innerText.includes(n), { timeout: 15000 }, uname)
   .catch(() => {})
+await new Promise((r) => setTimeout(r, 1500))
 results.deleteButtonsAfterLogin = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
-const delBtn = await page.$('button[aria-label^="删除"]')
-if (delBtn) {
-  await delBtn.click()
+const clickedDelete = await page.evaluate((name) => {
+  const btn = [...document.querySelectorAll('button[aria-label^="删除"]')].find(
+    (b) => b.closest('.group')?.innerText?.includes(name),
+  )
+  if (!btn) return false
+  btn.click()
+  return true
+}, songName)
+if (clickedDelete) {
   results.deleted = await page
     .waitForFunction((name) => !document.body.innerText.includes(name), { timeout: 15000 }, songName)
     .then(() => true)

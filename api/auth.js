@@ -13,7 +13,16 @@ import {
 } from './lib.js'
 
 function publicUser(user) {
-  return { id: user.id, username: user.username, createdAt: user.createdAt }
+  const admins = String(process.env.ADMIN_USERNAMES || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  return {
+    id: user.id,
+    username: user.username,
+    createdAt: user.createdAt,
+    isAdmin: admins.includes(String(user.username).toLowerCase()),
+  }
 }
 
 export default async function handler(req, res) {
