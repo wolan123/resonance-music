@@ -14,6 +14,12 @@ import { formatSeconds } from '../lib/format'
 import { artworkOf } from '../lib/api'
 import { SparkleIcon } from './LightIcons'
 
+export const EFFECT_MODES = [
+  { key: 'dynamic', label: '动感', hint: '炫彩频谱 + 光轮' },
+  { key: 'aurora', label: '极光', hint: '流动极光 + 光点' },
+  { key: 'pulse', label: '脉冲', hint: '随节拍扩散的光环' },
+]
+
 export default function PlayerBar({
   track,
   isPlaying,
@@ -30,8 +36,11 @@ export default function PlayerBar({
   hasLyrics,
   visualizerOn,
   onToggleVisualizer,
+  effectMode,
+  onEffectModeChange,
 }) {
   const [duration, setDuration] = useState(0)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     const el = audio
@@ -58,6 +67,7 @@ export default function PlayerBar({
   }
 
   const max = duration > 0 ? duration : Math.max(30, (track.durationMs || 0) / 1000)
+  const currentMode = EFFECT_MODES.find((m) => m.key === effectMode) || EFFECT_MODES[0]
 
   function seek(value) {
     try {
@@ -172,6 +182,41 @@ export default function PlayerBar({
               <SparkleIcon className="h-3.5 w-3.5" />
               光效
             </button>
+
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-expanded={menuOpen}
+                aria-label="播放特效"
+                className="flex items-center gap-1.5 rounded-full bg-white/6 px-3 py-2 text-xs font-semibold text-mist-300 transition hover:bg-white/10 active:scale-95"
+              >
+                <SparkleIcon className="h-3.5 w-3.5 text-gold-300" />
+                特效 {currentMode.label}
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div className="glass-strong absolute bottom-full right-0 z-50 mb-2 w-44 rounded-2xl p-1.5 shadow-2xl">
+                    <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-widest text-mist-700">播放特效</p>
+                    {EFFECT_MODES.map((m) => (
+                      <button
+                        key={m.key}
+                        onClick={() => {
+                          onEffectModeChange(m.key)
+                          setMenuOpen(false)
+                        }}
+                        className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs transition ${
+                          effectMode === m.key ? 'bg-gradient-to-r from-violet-500/30 to-cyan-500/30 text-white' : 'text-mist-300 hover:bg-white/8'
+                        }`}
+                      >
+                        <span className="font-semibold">{m.label}</span>
+                        <span className="text-[10px] text-mist-500">{m.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

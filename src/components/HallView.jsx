@@ -15,6 +15,7 @@ export default function HallView({
   hasLyrics,
   onPlay,
   onToggleFavorite,
+  canDelete,
   onDelete,
 }) {
   const q = filter.trim().toLowerCase()
@@ -94,7 +95,7 @@ export default function HallView({
                 hasLyrics={hasLyrics(track)}
                 onPlay={(t) => onPlay(t, shown)}
                 onToggleFavorite={onToggleFavorite}
-                onDelete={onDelete}
+                onDelete={canDelete(track) ? onDelete : undefined}
               />
             ))}
           </div>

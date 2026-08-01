@@ -1,53 +1,10 @@
-import { del, get, list, put } from '@vercel/blob'
-
-const LEGACY_INDEX = 'songs/index.json'
-
-function cleanString(value, max) {
-  return String(value || '').trim().slice(0, max)
-}
-
-async function readSongFile(pathname) {
-  try {
-    const result = await get(pathname, { access: 'public', useCache: false })
-    if (!result || result.statusCode !== 200 || !result.stream) return null
-    const text = await new Response(result.stream).text()
-    const data = JSON.parse(text)
-    return data && typeof data === 'object' && data.id ? data : null
-  } catch {
-    return null
-  }
-}
-
-async function readLegacyIndex() {
-  try {
-    const result = await get(LEGACY_INDEX, { access: 'public', useCache: false })
-    if (!result || result.statusCode !== 200 || !result.stream) return []
-    const text = await new Response(result.stream).text()
-    const data = JSON.parse(text)
-    return Array.isArray(data) ? data : []
-  } catch {
-    return []
-  }
-}
-
-async function readAllSongs() {
-  const { blobs } = await list({ prefix: 'songs/' })
-  const files = blobs
-    .filter((b) => b.pathname.startsWith('songs/') && b.pathname.endsWith('.json') && b.pathname !== LEGACY_INDEX)
-    .map((b) => b.pathname)
-  const [current, legacy] = await Promise.all([
-    Promise.all(files.map(readSongFile)),
-    readLegacyIndex(),
-  ])
-  const merged = [...current, ...legacy].filter(Boolean)
-  const seen = new Set()
-  const unique = merged.filter((s) => {
-    if (seen.has(s.id)) return false
-    seen.add(s.id)
-    return true
-  })
-  return unique.sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0))
-}
+import { del } from '@vercel/blob'
+import {
+  cleanString,
+  getSessionUser,
+  readAllSongs,
+  writeSongFile,
+} from './lib.js'
 
 export default async function handler(req, res) {
   const method = req.method || 'GET'
@@ -58,6 +15,8 @@ export default async function handler(req, res) {
     }
 
     if (method === 'POST') {
+      const user = await getSessionUser(req)
+      if (!user) return res.status(401).json({ error: '请先登录' })
       const body = req.body || {}
       const title = cleanString(body.title, 120)
       const audioUrl = cleanString(body.audioUrl, 1000)
@@ -74,27 +33,27 @@ export default async function handler(req, res) {
         audioUrl,
         artworkUrl: cleanString(body.artworkUrl, 1000) || null,
         lrc: typeof body.lrc === 'string' && body.lrc.trim() ? body.lrc.slice(0, 30000) : null,
-        uploader: cleanString(body.uploader, 40) || '匿名听众',
+        uploader: user.username,
+        userId: user.id,
         uploadedAt: Date.now(),
       }
-      await put(`songs/${id}.json`, JSON.stringify(song), {
-        access: 'public',
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        contentType: 'application/json',
-      })
+      await writeSongFile(song)
       return res.status(200).json({ song })
     }
 
     if (method === 'DELETE') {
+      const user = await getSessionUser(req)
+      if (!user) return res.status(401).json({ error: '请先登录' })
       const body = req.body || {}
       const id = cleanString(body.id, 100)
       if (!id) return res.status(400).json({ error: '缺少歌曲 ID' })
       const all = await readAllSongs()
       const target = all.find((s) => s.id === id)
       if (!target) return res.status(404).json({ error: '歌曲不存在' })
+      if (target.userId && target.userId !== user.id) {
+        return res.status(403).json({ error: '只能删除自己上传的歌曲' })
+      }
       const urls = [target.audioUrl, target.artworkUrl].filter(Boolean)
-      const paths = [`songs/${id}.json`]
       if (urls.length) {
         try {
           await del(urls)
@@ -103,7 +62,7 @@ export default async function handler(req, res) {
         }
       }
       try {
-        await del(paths)
+        await del(`songs/${id}.json`)
       } catch {
         /* ignore */
       }

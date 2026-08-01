@@ -60,3 +60,30 @@ export async function deleteSong(id) {
   if (!res.ok) throw new Error(data.error || '删除失败')
   return true
 }
+
+async function authRequest(action, payload = {}) {
+  const res = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '操作失败')
+  return data
+}
+
+export const registerUser = (username, password) => authRequest('register', { username, password })
+export const loginUser = (username, password) => authRequest('login', { username, password })
+export const logoutUser = () => authRequest('logout')
+export const fetchMe = () => authRequest('me')
+
+export async function autoMatchLyrics(id) {
+  const res = await fetch('/api/lyrics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '歌词匹配失败')
+  return data
+}

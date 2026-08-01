@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
-import { CheckCircle, CloudArrowUp, FileAudio, FileText, Spinner, X } from '@phosphor-icons/react'
+import { CheckCircle, CloudArrowUp, FileAudio, FileText, SignIn, Spinner, X } from '@phosphor-icons/react'
 import { parseAudioFile } from '../lib/metadata'
 import { uploadFileToBlob } from '../lib/upload'
 import { registerSong } from '../lib/api'
 
-export default function UploadView({ onUploaded }) {
+export default function UploadView({ user, onUploaded, onRequireAuth }) {
   const inputRef = useRef(null)
   const [drag, setDrag] = useState(false)
   const [file, setFile] = useState(null)
@@ -107,7 +107,16 @@ export default function UploadView({ onUploaded }) {
       <h1 className="text-2xl font-bold tracking-tight text-white lg:text-3xl">上传音乐</h1>
       <p className="mt-1 text-sm text-mist-500">上传后所有人都会在音乐大厅听到这首歌。请只上传你有权分享的音乐。</p>
 
-      {!file ? (
+      {!user ? (
+        <div className="glass mt-6 flex flex-col items-center gap-4 rounded-[2rem] p-12 text-center">
+          <SignIn size={34} className="text-violet-400" />
+          <p className="text-lg font-semibold text-white">登录后才能上传</p>
+          <p className="max-w-sm text-sm leading-relaxed text-mist-500">登录后，你上传的歌会署上你的名字，也只有你能删除。</p>
+          <button onClick={onRequireAuth} className="btn-glow rounded-full px-5 py-2.5 text-sm font-semibold">
+            去登录 / 注册
+          </button>
+        </div>
+      ) : !file ? (
         <div
           role="button"
           tabIndex={0}

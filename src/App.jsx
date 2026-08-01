@@ -8,10 +8,13 @@ import PlayerBar from './components/PlayerBar'
 import LyricsPanel from './components/LyricsPanel'
 import LightCanvas from './components/LightCanvas'
 import Toasts from './components/Toasts'
-import { deleteSong, fetchSongs } from './lib/api'
-import { fetchLyrics as fetchLyricsApi } from './lib/lyricsApi'
+import AuthModal from './components/AuthModal'
+import { autoMatchLyrics, deleteSong, fetchMe, fetchSongs, loginUser, logoutUser, registerUser } from './lib/api'
+import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
 import { getAnalyser } from './lib/visualizer'
 import { loadFavorites, loadVolume, saveFavorites, saveVolume } from './lib/storage'
+
+const EFFECT_KEY = 'lumen.effect.v1'
 
 export default function App() {
   const [audio] = useState(() => {
@@ -28,6 +31,11 @@ export default function App() {
   const [hallError, setHallError] = useState('')
   const [filter, setFilter] = useState('')
 
+  const [user, setUser] = useState(null)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authMode, setAuthMode] = useState('login')
+  const [authMessage, setAuthMessage] = useState('')
+
   const [favorites, setFavorites] = useState(loadFavorites)
   const [lrcMap, setLrcMap] = useState({})
   const [toasts, setToasts] = useState([])
@@ -38,6 +46,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0)
   const [volume, setVolume] = useState(loadVolume)
   const [visualizerOn, setVisualizerOn] = useState(true)
+  const [effectMode, setEffectMode] = useState(() => localStorage.getItem(EFFECT_KEY) || 'dynamic')
   const [analyser, setAnalyser] = useState(null)
   const [lyricsOpen, setLyricsOpen] = useState(false)
 
@@ -91,6 +100,12 @@ export default function App() {
   }, [loadSongs])
 
   useEffect(() => {
+    fetchMe()
+      .then((data) => setUser(data.user || null))
+      .catch(() => setUser(null))
+  }, [])
+
+  useEffect(() => {
     saveFavorites(favorites)
   }, [favorites])
 
@@ -98,6 +113,14 @@ export default function App() {
     saveVolume(volume)
     audio.volume = volume
   }, [volume, audio])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(EFFECT_KEY, effectMode)
+    } catch {
+      /* ignore */
+    }
+  }, [effectMode])
 
   const playAt = useCallback(
     (i) => {
@@ -216,14 +239,26 @@ export default function App() {
       if (!track) return null
       const existing = getLrcText(track)
       if (existing) return existing
-      const found = await fetchLyricsApi(track)
-      if (!found) return null
-      const text = found.synced || found.plain || null
-      if (text) {
-        lrcMapRef.current = { ...lrcMapRef.current, [track.id]: text }
+      let lrc = null
+      try {
+        const data = await autoMatchLyrics(track.id)
+        lrc = data.lrc || null
+      } catch {
+        lrc = null
+      }
+      if (!lrc) {
+        try {
+          const found = await fetchLyricsClient(track)
+          lrc = found ? found.synced || found.plain || null : null
+        } catch {
+          lrc = null
+        }
+      }
+      if (lrc) {
+        lrcMapRef.current = { ...lrcMapRef.current, [track.id]: lrc }
         setLrcMap({ ...lrcMapRef.current })
       }
-      return text
+      return lrc
     },
     [getLrcText],
   )
@@ -272,8 +307,62 @@ export default function App() {
     })
   }, [audio])
 
+  const openAuth = useCallback((mode = 'login', message = '') => {
+    setAuthMode(mode)
+    setAuthMessage(message)
+    setAuthOpen(true)
+  }, [])
+
+  const handleLogin = useCallback(
+    async (username, password) => {
+      const data = await loginUser(username, password)
+      setUser(data.user)
+      setAuthOpen(false)
+      toast(`欢迎回来，${data.user.username}！`)
+    },
+    [toast],
+  )
+
+  const handleRegister = useCallback(
+    async (username, password) => {
+      const data = await registerUser(username, password)
+      setUser(data.user)
+      setAuthOpen(false)
+      toast(`欢迎加入 LUMEN，${data.user.username}！`)
+    },
+    [toast],
+  )
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutUser()
+    } catch {
+      /* ignore */
+    }
+    setUser(null)
+    toast('已退出登录')
+  }, [toast])
+
+  const changeView = useCallback(
+    (next) => {
+      if (next === 'upload' && !user) {
+        openAuth('login', '登录后就能上传音乐，上传的歌会署上你的名字')
+        return
+      }
+      setView(next)
+    },
+    [openAuth, user],
+  )
+
   const currentTrack = index >= 0 && index < queue.length ? queue[index] : null
   const currentLrc = getLrcText(currentTrack)
+  const canDelete = (track) => !!user && (!track.userId || track.userId === user.id)
+
+  // auto network lyrics matching when a song without lyrics starts
+  useEffect(() => {
+    if (!currentTrack || getLrcText(currentTrack)) return
+    fetchLyricsFor(currentTrack).catch(() => {})
+  }, [currentTrack?.id])
 
   const anim = reducedMotion
     ? { initial: false }
@@ -286,14 +375,17 @@ export default function App() {
 
   return (
     <div className="relative min-h-[100dvh]">
-      {visualizerOn && <LightCanvas analyser={analyser} playing={isPlaying} />}
+      {visualizerOn && <LightCanvas analyser={analyser} playing={isPlaying} mode={effectMode} />}
 
       <NavBar
         view={view}
-        onChangeView={setView}
+        onChangeView={changeView}
         visualizerOn={visualizerOn}
         onToggleVisualizer={toggleVisualizer}
         songCount={songs.length}
+        user={user}
+        onOpenAuth={() => openAuth('login')}
+        onLogout={handleLogout}
       />
 
       <main className="relative z-10 pb-44 lg:pb-40">
@@ -314,13 +406,14 @@ export default function App() {
                   hasLyrics={getLrcText}
                   onPlay={playTrack}
                   onToggleFavorite={toggleFavorite}
+                  canDelete={canDelete}
                   onDelete={handleDelete}
                 />
               </motion.div>
             )}
             {view === 'upload' && (
               <motion.div key="upload" {...anim}>
-                <UploadView onUploaded={handleUploaded} />
+                <UploadView user={user} onUploaded={handleUploaded} onRequireAuth={() => openAuth('login', '登录后就能上传音乐')} />
               </motion.div>
             )}
             {view === 'favorites' && (
@@ -357,6 +450,8 @@ export default function App() {
         hasLyrics={!!currentLrc}
         visualizerOn={visualizerOn}
         onToggleVisualizer={toggleVisualizer}
+        effectMode={effectMode}
+        onEffectModeChange={setEffectMode}
       />
 
       <LyricsPanel
@@ -373,6 +468,15 @@ export default function App() {
             /* ignore */
           }
         }}
+      />
+
+      <AuthModal
+        open={authOpen}
+        initialMode={authMode}
+        message={authMessage}
+        onClose={() => setAuthOpen(false)}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
       />
 
       <Toasts toasts={toasts} />

@@ -44,6 +44,13 @@ async function clickByText(page, text) {
   }, text)
 }
 
+async function exactClick(page, text) {
+  await page.evaluate((t) => {
+    const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === t)
+    if (b) b.click()
+  }, text)
+}
+
 const browser = await puppeteer.launch({
   executablePath: EDGE,
   headless: true,
@@ -64,10 +71,13 @@ page.on('response', (r) => {
 })
 
 const results = {}
+const uname = `qa-${Date.now().toString(36)}`
+const pass = 'qa-password-123'
+
 await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 })
 
 results.brand = await page
-  .waitForFunction(() => document.body.innerText.includes('LUMEN 流光音乐'), { timeout: 15000 })
+  .waitForFunction(() => document.body.innerText.includes('LUMEN'), { timeout: 15000 })
   .then(() => true)
   .catch(() => false)
 results.hall = await page
@@ -75,14 +85,24 @@ results.hall = await page
   .then(() => true)
   .catch(() => false)
 
-// --- go to upload view ---
+// --- register a new account ---
+await clickByText(page, '登录 / 注册')
+await page.waitForSelector('input[autocomplete="username"]', { timeout: 10000 })
+await exactClick(page, '注册')
+await page.type('input[autocomplete="username"]', uname)
+await page.type('input[type="password"]', pass)
+await page.click('button[type="submit"]')
+results.registered = await page
+  .waitForFunction((n) => document.body.innerText.includes(n), { timeout: 15000 }, uname)
+  .then(() => true)
+  .catch(() => false)
+
+// --- upload WAV + LRC while logged in ---
 await clickByText(page, '上传')
 results.uploadView = await page
   .waitForFunction(() => document.body.innerText.includes('拖进来，或者点这里选择文件'), { timeout: 10000 })
   .then(() => true)
   .catch(() => false)
-
-// --- upload WAV + LRC ---
 const input = await page.$('input[type="file"]')
 await input.uploadFile(wavPath, lrcPath)
 results.parsed = await page
@@ -91,38 +111,29 @@ results.parsed = await page
   .catch(() => false)
 
 await clickByText(page, '发布到音乐大厅')
-await new Promise((r) => setTimeout(r, 4000))
-results.publishErrorShown = await page.evaluate(() => {
-  const m = document.body.innerText.match(/(读取歌曲信息失败[^\n]*|上传失败[^\n]*)/)
-  return m ? m[0] : ''
-})
-results.debugState = await page.evaluate((name) => ({
-  url: location.href,
-  onUploadView: document.body.innerText.includes('上传音乐'),
-  onHall: document.body.innerText.includes('音乐大厅'),
-  hasSongText: document.body.innerText.includes(name),
-  hasUploader: document.body.innerText.includes('匿名听众'),
-  h1: document.querySelector('h1')?.textContent || '',
-}), songName)
 results.published = await page
-  .waitForFunction(() => document.body.innerText.includes('匿名听众'), { timeout: 40000 })
+  .waitForFunction(
+    (name, u) => document.body.innerText.includes(name) && document.body.innerText.includes(`${u} 上传`),
+    { timeout: 40000 },
+    songName,
+    uname,
+  )
   .then(() => true)
   .catch(() => false)
 
-// --- play the uploaded song (it is the first row) ---
-await new Promise((r) => setTimeout(r, 800))
+// --- play the uploaded song (first row) ---
 const playBtn = await page.$('button[aria-label^="播放"]')
 if (playBtn) {
   await playBtn.click()
   results.playPressed = true
 }
-await new Promise((r) => setTimeout(r, 2500))
+await new Promise((r) => setTimeout(r, 2000))
 results.isPlaying = !!(await page.$('button[aria-label="暂停"]'))
 
-// --- lyrics panel ---
+// --- lyrics panel (LRC from upload) ---
 await clickByText(page, '歌词')
 results.lyricsPanel = await page
-  .waitForFunction((name) => document.body.innerText.includes('QA歌词第一行'), { timeout: 10000 }, songName)
+  .waitForFunction(() => document.body.innerText.includes('QA歌词第一行'), { timeout: 10000 })
   .then(() => true)
   .catch(() => false)
 await page.evaluate(() => {
@@ -130,8 +141,26 @@ await page.evaluate(() => {
   if (b) b.click()
 })
 
-// --- immersive light canvas + toggle ---
-results.canvas = !!(await page.$('canvas'))
+// --- effect mode menu ---
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '播放特效')
+  if (b) b.click()
+})
+await page
+  .waitForFunction(() => [...document.querySelectorAll('button')].some((x) => x.textContent.trim() === '极光'), {
+    timeout: 5000,
+  })
+  .catch(() => {})
+await exactClick(page, '极光')
+results.effectChanged = await page
+  .waitForFunction(() => [...document.querySelectorAll('button')].some((x) => x.textContent.includes('特效 极光')), {
+    timeout: 5000,
+  })
+  .then(() => true)
+  .catch(() => false)
+results.canvasAfterEffect = !!(await page.$('canvas'))
+
+// --- light toggle ---
 await page.evaluate(() => {
   const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '光效')
   if (b) b.click()
@@ -146,23 +175,40 @@ await new Promise((r) => setTimeout(r, 300))
 results.canvasAfterToggleOn = !!(await page.$('canvas'))
 
 // --- favorites ---
-const favBtn = await page.$('button[aria-label="收藏"]')
-if (favBtn) {
-  await favBtn.click()
-  results.favorited = true
-}
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '收藏')
+  if (b) b.click()
+})
 await clickByText(page, '收藏')
 results.favoritesShown = await page
   .waitForFunction((name) => document.body.innerText.includes(name), { timeout: 10000 }, songName)
   .then(() => true)
   .catch(() => false)
 
-// --- cleanup: delete the uploaded song ---
+// --- permission: delete buttons disappear after logout ---
 await clickByText(page, '音乐大厅')
-await page.waitForFunction(() => document.body.innerText.includes('都有一片光'), { timeout: 10000 }).catch(() => {})
-const delBtn = await page
-  .waitForSelector('button[aria-label^="删除"]', { timeout: 10000 })
-  .catch(() => null)
+await page
+  .waitForFunction((name) => document.body.innerText.includes(name), { timeout: 10000 }, songName)
+  .catch(() => {})
+results.deleteButtonsOwned = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '退出登录')
+  if (b) b.click()
+})
+await new Promise((r) => setTimeout(r, 1000))
+results.deleteButtonsAfterLogout = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
+
+// --- login again and delete own song ---
+await clickByText(page, '登录 / 注册')
+await page.waitForSelector('input[autocomplete="username"]', { timeout: 10000 })
+await page.type('input[autocomplete="username"]', uname)
+await page.type('input[type="password"]', pass)
+await page.click('button[type="submit"]')
+await page
+  .waitForFunction((n) => document.body.innerText.includes(n), { timeout: 15000 }, uname)
+  .catch(() => {})
+results.deleteButtonsAfterLogin = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
+const delBtn = await page.$('button[aria-label^="删除"]')
 if (delBtn) {
   await delBtn.click()
   results.deleted = await page
