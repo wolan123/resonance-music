@@ -1,5 +1,5 @@
-import { Heart, Pause, Play, Trash } from '@phosphor-icons/react'
-import { formatMs } from '../lib/format'
+import { Heart, Pause, Play, Plus, Trash } from '@phosphor-icons/react'
+import { formatMs, formatPlays } from '../lib/format'
 import { artworkOf } from '../lib/api'
 
 export function Equalizer({ active }) {
@@ -21,7 +21,9 @@ export default function TrackRow({
   hasLyrics = false,
   onPlay,
   onToggleFavorite,
+  onAddToPlaylist,
   onDelete,
+  plays = null,
 }) {
   return (
     <div
@@ -53,6 +55,15 @@ export default function TrackRow({
         </p>
       </div>
       <p className="hidden w-40 shrink-0 truncate text-sm text-mist-700 md:block">{track.album || '—'}</p>
+      {onAddToPlaylist && (
+        <button
+          onClick={() => onAddToPlaylist(track)}
+          aria-label={`加入歌单 ${track.title}`}
+          className="shrink-0 rounded-lg p-2 text-mist-700 transition hover:text-cyan-300 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 active:scale-90"
+        >
+          <Plus size={17} />
+        </button>
+      )}
       <button
         onClick={() => onToggleFavorite(track)}
         aria-label={isFavorite ? '取消收藏' : '收藏'}
@@ -81,7 +92,7 @@ export default function TrackRow({
         </button>
       )}
       <p className="hidden w-12 shrink-0 text-right text-sm tabular-nums text-mist-700 md:block">
-        {formatMs(track.durationMs)}
+        {plays != null ? `${formatPlays(plays)}次` : formatMs(track.durationMs)}
       </p>
     </div>
   )

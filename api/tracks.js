@@ -3,7 +3,9 @@ import {
   cleanString,
   getSessionUser,
   readAllSongs,
+  readAllPlaylists,
   writeSongFile,
+  writePlaylistFile,
 } from './lib.js'
 
 export default async function handler(req, res) {
@@ -35,6 +37,7 @@ export default async function handler(req, res) {
         lrc: typeof body.lrc === 'string' && body.lrc.trim() ? body.lrc.slice(0, 30000) : null,
         uploader: user.username,
         userId: user.id,
+        playCount: 0,
         uploadedAt: Date.now(),
       }
       await writeSongFile(song)
@@ -71,6 +74,14 @@ export default async function handler(req, res) {
         await del(`songs/${id}.json`)
       } catch {
         /* ignore */
+      }
+      const playlists = await readAllPlaylists()
+      for (const pl of playlists) {
+        if (pl.trackIds.includes(id)) {
+          pl.trackIds = pl.trackIds.filter((t) => t !== id)
+          pl.updatedAt = Date.now()
+          await writePlaylistFile(pl)
+        }
       }
       return res.status(200).json({ ok: true })
     }

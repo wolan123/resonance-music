@@ -13,6 +13,7 @@ const ENC_KEY = scryptSync(AUTH_SECRET, 'lumen-auth-v1', 32)
 const USER_PREFIX = 'users/'
 const SESSION_PREFIX = 'users/sessions/'
 const SONG_PREFIX = 'songs/'
+const PLAYLIST_PREFIX = 'playlists/'
 const SESSION_TTL = 30 * 24 * 3600 * 1000
 
 export function parseCookies(req) {
@@ -178,6 +179,30 @@ export async function readAllSongs() {
     .map((b) => b.pathname)
   const songs = (await Promise.all(files.map(readSongFile))).filter(Boolean)
   return songs.sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0))
+}
+
+export async function readPlaylistFile(pathname) {
+  const text = await readBlobText(pathname)
+  if (!text) return null
+  try {
+    const data = JSON.parse(text)
+    return data && typeof data === 'object' && data.id ? data : null
+  } catch {
+    return null
+  }
+}
+
+export async function writePlaylistFile(playlist) {
+  await writeBlob(`${PLAYLIST_PREFIX}${playlist.id}.json`, JSON.stringify(playlist), 'application/json')
+}
+
+export async function readAllPlaylists() {
+  const { blobs } = await list({ prefix: PLAYLIST_PREFIX })
+  const files = blobs
+    .filter((b) => b.pathname.startsWith(PLAYLIST_PREFIX) && b.pathname.endsWith('.json'))
+    .map((b) => b.pathname)
+  const playlists = (await Promise.all(files.map(readPlaylistFile))).filter(Boolean)
+  return playlists.sort((a, b) => (b.playCount || 0) - (a.playCount || 0) || (b.createdAt || 0) - (a.createdAt || 0))
 }
 
 export function cleanString(value, max) {

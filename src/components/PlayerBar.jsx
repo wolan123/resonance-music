@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Heart,
+  List,
   MusicNotes,
   Pause,
   Play,
@@ -33,6 +34,7 @@ export default function PlayerBar({
   volume,
   onVolumeChange,
   onOpenLyrics,
+  onOpenQueue,
   hasLyrics,
   visualizerOn,
   onToggleVisualizer,
@@ -56,7 +58,7 @@ export default function PlayerBar({
 
   if (!track) {
     return (
-      <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-1 sm:px-6">
+      <div className="fixed inset-x-0 bottom-16 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-1 sm:px-6 lg:bottom-0 lg:left-60 lg:px-8">
         <div className="glass-strong mx-auto flex max-w-6xl items-center gap-2 rounded-[1.5rem] px-5 py-4">
           <MusicNotes size={17} className="text-violet-400" />
           <p className="text-sm text-mist-500">点一首歌，让光响起来</p>
@@ -78,7 +80,7 @@ export default function PlayerBar({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-1 sm:px-6">
+    <div className="fixed inset-x-0 bottom-16 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-1 sm:px-6 lg:bottom-0 lg:left-60 lg:px-8">
       <div className="glass-strong mx-auto max-w-6xl rounded-[1.5rem] px-4 py-3 shadow-[0_20px_60px_rgba(139,92,246,0.18)] sm:px-6">
         <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:gap-6">
           <div className="flex min-w-0 items-center gap-3 lg:w-72 lg:shrink-0">
@@ -170,6 +172,14 @@ export default function PlayerBar({
             >
               <TextAa size={15} weight="bold" />
               歌词
+            </button>
+            <button
+              onClick={onOpenQueue}
+              aria-label="播放队列"
+              className="flex items-center gap-1.5 rounded-full bg-white/6 px-3 py-2 text-xs font-semibold text-mist-300 transition hover:bg-white/10 active:scale-95"
+            >
+              <List size={15} weight="bold" />
+              队列
             </button>
             <button
               onClick={onToggleVisualizer}

@@ -12,3 +12,10 @@ export function formatSeconds(sec) {
   const s = total % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
+
+export function formatPlays(n) {
+  const v = Number(n) || 0
+  if (v >= 100000000) return `${(v / 100000000).toFixed(1)}亿`
+  if (v >= 10000) return `${(v / 10000).toFixed(1)}万`
+  return String(v)
+}

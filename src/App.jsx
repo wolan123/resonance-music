@@ -1,20 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import NavBar from './components/NavBar'
-import HallView from './components/HallView'
+import { Sparkle, User, Waveform } from '@phosphor-icons/react'
+import Sidebar from './components/Sidebar'
+import MobileTabs from './components/MobileTabs'
+import DiscoverView from './components/DiscoverView'
+import PlaylistsView from './components/PlaylistsView'
+import PlaylistDetailView from './components/PlaylistDetailView'
+import RankingsView from './components/RankingsView'
+import ProfileView from './components/ProfileView'
 import UploadView from './components/UploadView'
-import FavoritesView from './components/FavoritesView'
 import PlayerBar from './components/PlayerBar'
 import LyricsPanel from './components/LyricsPanel'
 import LightCanvas from './components/LightCanvas'
 import Toasts from './components/Toasts'
 import AuthModal from './components/AuthModal'
-import { autoMatchLyrics, deleteSong, fetchMe, fetchSongs, loginUser, logoutUser, registerUser } from './lib/api'
+import QueuePanel from './components/QueuePanel'
+import AddToPlaylistModal from './components/AddToPlaylistModal'
+import {
+  addToPlaylist,
+  autoMatchLyrics,
+  createPlaylist,
+  deletePlaylist,
+  deleteSong,
+  fetchMe,
+  fetchPlaylists,
+  fetchSongs,
+  loginUser,
+  logoutUser,
+  registerUser,
+  removeFromPlaylist,
+  reportPlay,
+} from './lib/api'
 import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
 import { getAnalyser } from './lib/visualizer'
 import { loadFavorites, loadVolume, saveFavorites, saveVolume } from './lib/storage'
 
 const EFFECT_KEY = 'lumen.effect.v1'
+const RECENT_KEY = 'lumen.recent.v1'
+
+function loadRecent() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecent(list) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+  } catch {
+    /* ignore */
+  }
+}
+
+function snapshotTrack(track) {
+  return {
+    id: track.id,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    artworkUrl: track.artworkUrl,
+    audioUrl: track.audioUrl,
+    durationMs: track.durationMs,
+    uploader: track.uploader,
+  }
+}
 
 export default function App() {
   const [audio] = useState(() => {
@@ -25,11 +77,14 @@ export default function App() {
   })
   const reducedMotion = useReducedMotion()
 
-  const [view, setView] = useState('hall')
+  const [view, setView] = useState('discover')
+  const [playlistDetail, setPlaylistDetail] = useState(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
   const [songs, setSongs] = useState([])
-  const [hallLoading, setHallLoading] = useState(true)
-  const [hallError, setHallError] = useState('')
-  const [filter, setFilter] = useState('')
+  const [songsLoading, setSongsLoading] = useState(true)
+  const [playlists, setPlaylists] = useState([])
+  const [playlistsLoading, setPlaylistsLoading] = useState(true)
 
   const [user, setUser] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
@@ -37,6 +92,7 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState('')
 
   const [favorites, setFavorites] = useState(loadFavorites)
+  const [recentPlays, setRecentPlays] = useState(loadRecent)
   const [lrcMap, setLrcMap] = useState({})
   const [toasts, setToasts] = useState([])
 
@@ -49,6 +105,8 @@ export default function App() {
   const [effectMode, setEffectMode] = useState(() => localStorage.getItem(EFFECT_KEY) || 'dynamic')
   const [analyser, setAnalyser] = useState(null)
   const [lyricsOpen, setLyricsOpen] = useState(false)
+  const [queueOpen, setQueueOpen] = useState(false)
+  const [addToTrack, setAddToTrack] = useState(null)
 
   const queueRef = useRef(queue)
   const indexRef = useRef(index)
@@ -68,6 +126,9 @@ export default function App() {
   useEffect(() => {
     visualizerOnRef.current = visualizerOn
   }, [visualizerOn])
+  useEffect(() => {
+    saveRecent(recentPlays)
+  }, [recentPlays])
 
   const toast = useCallback((text) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -84,20 +145,31 @@ export default function App() {
   }, [audio])
 
   const loadSongs = useCallback(async () => {
-    setHallLoading(true)
-    setHallError('')
+    setSongsLoading(true)
     try {
       setSongs(await fetchSongs())
-    } catch (e) {
-      setHallError(e.message || '加载失败')
+    } catch {
+      setSongs([])
     } finally {
-      setHallLoading(false)
+      setSongsLoading(false)
+    }
+  }, [])
+
+  const loadPlaylists = useCallback(async () => {
+    setPlaylistsLoading(true)
+    try {
+      setPlaylists(await fetchPlaylists())
+    } catch {
+      setPlaylists([])
+    } finally {
+      setPlaylistsLoading(false)
     }
   }, [])
 
   useEffect(() => {
     loadSongs()
-  }, [loadSongs])
+    loadPlaylists()
+  }, [loadSongs, loadPlaylists])
 
   useEffect(() => {
     fetchMe()
@@ -122,6 +194,18 @@ export default function App() {
     }
   }, [effectMode])
 
+  const reportTrack = useCallback((track) => {
+    if (!track) return
+    setRecentPlays((prev) => [snapshotTrack(track), ...prev.filter((p) => p.id !== track.id)].slice(0, 50))
+    reportPlay(track.id)
+      .then((count) => {
+        if (count != null) {
+          setSongs((prev) => prev.map((s) => (s.id === track.id ? { ...s, playCount: count } : s)))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   const playAt = useCallback(
     (i) => {
       const list = queueRef.current
@@ -132,9 +216,10 @@ export default function App() {
       const track = list[safe]
       audio.src = track.audioUrl
       audio.play().catch(() => {})
+      reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio, ensureAnalyser],
+    [audio, ensureAnalyser, reportTrack],
   )
 
   const playTrack = useCallback(
@@ -149,9 +234,10 @@ export default function App() {
       setIndex(safe)
       audio.src = track.audioUrl
       audio.play().catch(() => {})
+      reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio, ensureAnalyser],
+    [audio, ensureAnalyser, reportTrack],
   )
 
   const next = useCallback(() => playAt(indexRef.current + 1), [playAt])
@@ -173,6 +259,33 @@ export default function App() {
       audio.pause()
     }
   }, [audio, ensureAnalyser])
+
+  const removeFromQueue = useCallback(
+    (i) => {
+      const list = queueRef.current
+      if (i < 0 || i >= list.length) return
+      const next = list.filter((_, idx) => idx !== i)
+      queueRef.current = next
+      setQueue(next)
+      if (i === indexRef.current) {
+        audio.pause()
+        setIndex(-1)
+        indexRef.current = -1
+      } else if (i < indexRef.current) {
+        indexRef.current -= 1
+        setIndex(indexRef.current)
+      }
+    },
+    [audio],
+  )
+
+  const clearQueue = useCallback(() => {
+    audio.pause()
+    queueRef.current = []
+    setQueue([])
+    setIndex(-1)
+    indexRef.current = -1
+  }, [audio])
 
   useEffect(() => {
     const onPlay = () => setIsPlaying(true)
@@ -209,21 +322,7 @@ export default function App() {
     (track) => {
       setFavorites((prev) => {
         if (prev.some((f) => f.id === track.id)) return prev.filter((f) => f.id !== track.id)
-        return [
-          {
-            id: track.id,
-            title: track.title,
-            artist: track.artist,
-            album: track.album,
-            artworkUrl: track.artworkUrl,
-            audioUrl: track.audioUrl,
-            durationMs: track.durationMs,
-            lrc: track.lrc,
-            uploader: track.uploader,
-            addedAt: Date.now(),
-          },
-          ...prev,
-        ]
+        return [{ ...snapshotTrack(track), addedAt: Date.now() }, ...prev]
       })
     },
     [],
@@ -263,7 +362,20 @@ export default function App() {
     [getLrcText],
   )
 
-  const handleDelete = useCallback(
+  const currentTrack = index >= 0 && index < queue.length ? queue[index] : null
+  const currentLrc = getLrcText(currentTrack)
+
+  useEffect(() => {
+    if (!currentTrack || getLrcText(currentTrack)) return
+    fetchLyricsFor(currentTrack).catch(() => {})
+  }, [currentTrack?.id])
+
+  const canDeleteSong = useCallback(
+    (track) => !!user && (track.userId === user.id || (user.isAdmin && !track.userId)),
+    [user],
+  )
+
+  const handleDeleteSong = useCallback(
     async (track) => {
       if (!window.confirm(`确定删除《${track.title}》吗？删除后所有人都听不到了。`)) return
       try {
@@ -281,6 +393,7 @@ export default function App() {
       }
       setSongs((prev) => prev.filter((s) => s.id !== track.id))
       setFavorites((prev) => prev.filter((f) => f.id !== track.id))
+      setRecentPlays((prev) => prev.filter((p) => p.id !== track.id))
       toast(`《${track.title}》已删除`)
     },
     [audio, toast],
@@ -289,7 +402,7 @@ export default function App() {
   const handleUploaded = useCallback(
     (song) => {
       toast(`《${song.title}》已经发光上线！`)
-      setView('hall')
+      setView('discover')
       loadSongs()
     },
     [loadSongs, toast],
@@ -340,11 +453,13 @@ export default function App() {
       /* ignore */
     }
     setUser(null)
+    setPlaylistDetail(null)
     toast('已退出登录')
   }, [toast])
 
   const changeView = useCallback(
     (next) => {
+      setPlaylistDetail(null)
       if (next === 'upload' && !user) {
         openAuth('login', '登录后就能上传音乐，上传的歌会署上你的名字')
         return
@@ -354,15 +469,90 @@ export default function App() {
     [openAuth, user],
   )
 
-  const currentTrack = index >= 0 && index < queue.length ? queue[index] : null
-  const currentLrc = getLrcText(currentTrack)
-  const canDelete = (track) => !!user && (track.userId === user.id || (user.isAdmin && !track.userId))
+  const handleCreatePlaylist = useCallback(
+    async (name, description) => {
+      const playlist = await createPlaylist(name, description)
+      setPlaylists((prev) => [playlist, ...prev])
+      toast(`歌单《${name}》创建成功`)
+      return playlist
+    },
+    [toast],
+  )
 
-  // auto network lyrics matching when a song without lyrics starts
-  useEffect(() => {
-    if (!currentTrack || getLrcText(currentTrack)) return
-    fetchLyricsFor(currentTrack).catch(() => {})
-  }, [currentTrack?.id])
+  const handleAddToPlaylistTrack = useCallback(
+    (track) => {
+      if (!user) {
+        openAuth('login', '登录后才能把歌收藏到歌单')
+        return
+      }
+      setAddToTrack(track)
+    },
+    [openAuth, user],
+  )
+
+  const handleAddTrackToPlaylist = useCallback(
+    async (playlistId) => {
+      if (!addToTrack) return
+      try {
+        const updated = await addToPlaylist(playlistId, addToTrack.id)
+        setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? updated : p)))
+        toast(`已加入歌单《${updated.name}》`)
+        setAddToTrack(null)
+      } catch (e) {
+        toast(e.message || '添加失败')
+      }
+    },
+    [addToTrack, toast],
+  )
+
+  const handleTogglePlaylistSong = useCallback(
+    async (trackId) => {
+      if (!playlistDetail) return
+      const inList = (playlistDetail.trackIds || []).includes(trackId)
+      try {
+        const updated = inList
+          ? await removeFromPlaylist(playlistDetail.id, trackId)
+          : await addToPlaylist(playlistDetail.id, trackId)
+        setPlaylists((prev) => prev.map((p) => (p.id === playlistDetail.id ? updated : p)))
+        setPlaylistDetail(updated)
+      } catch (e) {
+        toast(e.message || '操作失败')
+      }
+    },
+    [playlistDetail, toast],
+  )
+
+  const handleRemovePlaylistTrack = useCallback(
+    async (trackId) => {
+      if (!playlistDetail) return
+      try {
+        const updated = await removeFromPlaylist(playlistDetail.id, trackId)
+        setPlaylists((prev) => prev.map((p) => (p.id === playlistDetail.id ? updated : p)))
+        setPlaylistDetail(updated)
+      } catch (e) {
+        toast(e.message || '移除失败')
+      }
+    },
+    [playlistDetail, toast],
+  )
+
+  const handleDeletePlaylist = useCallback(async () => {
+    if (!playlistDetail) return
+    if (!window.confirm(`确定删除歌单《${playlistDetail.name}》吗？`)) return
+    try {
+      await deletePlaylist(playlistDetail.id)
+    } catch (e) {
+      toast(e.message || '删除失败')
+      return
+    }
+    setPlaylists((prev) => prev.filter((p) => p.id !== playlistDetail.id))
+    setPlaylistDetail(null)
+    toast('歌单已删除')
+  }, [playlistDetail, toast])
+
+  const openPlaylist = useCallback((playlist) => {
+    setPlaylistDetail(playlist)
+  }, [])
 
   const anim = reducedMotion
     ? { initial: false }
@@ -377,62 +567,153 @@ export default function App() {
     <div className="relative min-h-[100dvh]">
       {visualizerOn && <LightCanvas analyser={analyser} playing={isPlaying} mode={effectMode} />}
 
-      <NavBar
+      <Sidebar
         view={view}
         onChangeView={changeView}
-        visualizerOn={visualizerOn}
-        onToggleVisualizer={toggleVisualizer}
-        songCount={songs.length}
         user={user}
         onOpenAuth={() => openAuth('login')}
         onLogout={handleLogout}
+        visualizerOn={visualizerOn}
+        onToggleVisualizer={toggleVisualizer}
+        songCount={songs.length}
+        playlistCount={playlists.length}
       />
 
-      <main className="relative z-10 pb-44 lg:pb-40">
-        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
-          <AnimatePresence mode="wait">
-            {view === 'hall' && (
-              <motion.div key="hall" {...anim}>
-                <HallView
-                  songs={songs}
-                  loading={hallLoading}
-                  error={hallError}
-                  onRetry={loadSongs}
-                  filter={filter}
-                  onFilterChange={setFilter}
-                  currentTrack={currentTrack}
-                  isPlaying={isPlaying}
-                  isFav={isFav}
-                  hasLyrics={getLrcText}
-                  onPlay={playTrack}
-                  onToggleFavorite={toggleFavorite}
-                  canDelete={canDelete}
-                  onDelete={handleDelete}
-                />
-              </motion.div>
-            )}
-            {view === 'upload' && (
-              <motion.div key="upload" {...anim}>
-                <UploadView user={user} onUploaded={handleUploaded} onRequireAuth={() => openAuth('login', '登录后就能上传音乐')} />
-              </motion.div>
-            )}
-            {view === 'favorites' && (
-              <motion.div key="favorites" {...anim}>
-                <FavoritesView
-                  tracks={favorites}
-                  currentTrack={currentTrack}
-                  isPlaying={isPlaying}
-                  isFav={isFav}
-                  hasLyrics={getLrcText}
-                  onPlay={playTrack}
-                  onToggleFavorite={toggleFavorite}
-                  onGoHall={() => setView('hall')}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+      <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-white/8 bg-abyss-950/75 px-4 py-2.5 backdrop-blur-xl lg:hidden">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-cyan-400">
+          <Waveform size={17} weight="fill" className="text-white" />
+        </div>
+        <p className="text-sm font-bold tracking-wide text-white">LUMEN 流光音乐</p>
+        <div className="ml-auto flex items-center gap-2">
+          {user ? (
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-400 text-xs font-bold text-white">
+              {user.username.slice(0, 1).toUpperCase()}
+            </span>
+          ) : (
+            <button
+              onClick={() => openAuth('login')}
+              aria-label="登录"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/10 text-violet-200"
+            >
+              <User size={16} />
+            </button>
+          )}
+          <button
+            onClick={toggleVisualizer}
+            aria-pressed={visualizerOn}
+            aria-label="沉浸光效开关"
+            className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+              visualizerOn ? 'bg-gradient-to-br from-violet-500 to-cyan-400 text-white' : 'border border-white/10 text-mist-500'
+            }`}
+          >
+            <Sparkle size={16} weight={visualizerOn ? 'fill' : 'regular'} />
+          </button>
+        </div>
+      </header>
+
+      <main className="relative z-10 pb-56 lg:pb-44 lg:pl-60">
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+          {playlistDetail ? (
+            <motion.div key={`playlist-${playlistDetail.id}`} {...anim}>
+              <PlaylistDetailView
+                playlist={playlistDetail}
+                songs={songs}
+                user={user}
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+                isFav={isFav}
+                hasLyrics={getLrcText}
+                onBack={() => {
+                  setPlaylistDetail(null)
+                  setView('playlists')
+                }}
+                onPlayAll={(tracks) => tracks.length && playTrack(tracks[0], tracks)}
+                onPlay={playTrack}
+                onToggleFavorite={toggleFavorite}
+                onAddToPlaylist={handleAddToPlaylistTrack}
+                onRemoveTrack={handleRemovePlaylistTrack}
+                onDeletePlaylist={handleDeletePlaylist}
+                pickerOpen={pickerOpen}
+                onTogglePicker={() => setPickerOpen((v) => !v)}
+                onToggleSong={handleTogglePlaylistSong}
+              />
+            </motion.div>
+          ) : (
+            <AnimatePresence mode="wait">
+              {view === 'discover' && (
+                <motion.div key="discover" {...anim}>
+                  <DiscoverView
+                    songs={songs}
+                    playlists={playlists}
+                    loading={songsLoading}
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    isFav={isFav}
+                    hasLyrics={getLrcText}
+                    onPlay={playTrack}
+                    onToggleFavorite={toggleFavorite}
+                    onAddToPlaylist={handleAddToPlaylistTrack}
+                    onOpenPlaylist={openPlaylist}
+                    onGoPlaylists={() => setView('playlists')}
+                    onGoRankings={() => setView('rankings')}
+                  />
+                </motion.div>
+              )}
+              {view === 'playlists' && (
+                <motion.div key="playlists" {...anim}>
+                  <PlaylistsView
+                    playlists={playlists}
+                    songs={songs}
+                    loading={playlistsLoading}
+                    user={user}
+                    onOpenPlaylist={openPlaylist}
+                    onCreate={handleCreatePlaylist}
+                    onOpenAuth={() => openAuth('login', '登录后就能创建歌单')}
+                  />
+                </motion.div>
+              )}
+              {view === 'rankings' && (
+                <motion.div key="rankings" {...anim}>
+                  <RankingsView songs={songs} currentTrack={currentTrack} isPlaying={isPlaying} onPlay={playTrack} />
+                </motion.div>
+              )}
+              {view === 'profile' && (
+                <motion.div key="profile" {...anim}>
+                  <ProfileView
+                    user={user}
+                    songs={songs}
+                    favorites={favorites}
+                    recentPlays={recentPlays}
+                    playlists={playlists}
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    isFav={isFav}
+                    hasLyrics={getLrcText}
+                    onOpenAuth={() => openAuth('login')}
+                    onPlay={playTrack}
+                    onToggleFavorite={toggleFavorite}
+                    onAddToPlaylist={handleAddToPlaylistTrack}
+                    onDeleteSong={(track) => canDeleteSong(track) && handleDeleteSong(track)}
+                    onOpenPlaylist={openPlaylist}
+                    onGoUpload={() => changeView('upload')}
+                  />
+                </motion.div>
+              )}
+              {view === 'upload' && (
+                <motion.div key="upload" {...anim}>
+                  <UploadView
+                    user={user}
+                    onUploaded={handleUploaded}
+                    onRequireAuth={() => openAuth('login', '登录后就能上传音乐')}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
         </div>
       </main>
+
+      <MobileTabs view={view} onChangeView={changeView} />
 
       <PlayerBar
         track={currentTrack}
@@ -447,6 +728,7 @@ export default function App() {
         volume={volume}
         onVolumeChange={setVolume}
         onOpenLyrics={() => setLyricsOpen(true)}
+        onOpenQueue={() => setQueueOpen(true)}
         hasLyrics={!!currentLrc}
         visualizerOn={visualizerOn}
         onToggleVisualizer={toggleVisualizer}
@@ -468,6 +750,26 @@ export default function App() {
             /* ignore */
           }
         }}
+      />
+
+      <QueuePanel
+        open={queueOpen}
+        onClose={() => setQueueOpen(false)}
+        queue={queue}
+        index={index}
+        isPlaying={isPlaying}
+        onPlayAt={playAt}
+        onRemove={removeFromQueue}
+        onClear={clearQueue}
+      />
+
+      <AddToPlaylistModal
+        track={addToTrack}
+        playlists={playlists.filter((p) => user && p.creatorId === user.id)}
+        songs={songs}
+        onClose={() => setAddToTrack(null)}
+        onAdd={handleAddTrackToPlaylist}
+        onCreate={handleCreatePlaylist}
       />
 
       <AuthModal

@@ -87,3 +87,47 @@ export async function autoMatchLyrics(id) {
   if (!res.ok) throw new Error(data.error || '歌词匹配失败')
   return data
 }
+
+export async function fetchPlaylists() {
+  const res = await fetch('/api/playlists', { signal: AbortSignal.timeout(15000) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '歌单加载失败')
+  return Array.isArray(data.playlists) ? data.playlists : []
+}
+
+async function playlistRequest(action, payload = {}) {
+  const res = await fetch('/api/playlists', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '操作失败')
+  return data.playlist || data
+}
+
+export const createPlaylist = (name, description) => playlistRequest('create', { name, description })
+export const addToPlaylist = (id, trackId) => playlistRequest('add', { id, trackId })
+export const removeFromPlaylist = (id, trackId) => playlistRequest('remove', { id, trackId })
+
+export async function deletePlaylist(id) {
+  const res = await fetch('/api/playlists', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '删除失败')
+  return true
+}
+
+export async function reportPlay(id) {
+  const res = await fetch('/api/play', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  if (!res.ok) return
+  const data = await res.json().catch(() => ({}))
+  return data.playCount
+}
