@@ -178,6 +178,16 @@ input[type="range"] {
   animation: float-slow 14s ease-in-out infinite;
 }
 
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 24s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -186,7 +196,8 @@ input[type="range"] {
   .animate-pop,
   .eq-bar,
   .pulse-ring,
-  .animate-float-slow {
+  .animate-float-slow,
+  .animate-spin-slow {
     animation: none;
   }
 }

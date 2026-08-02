@@ -19,6 +19,7 @@ function CreatePlaylistModal({ open, onClose, onCreate }) {
       await onCreate(name.trim(), description.trim())
       setName('')
       setDescription('')
+      onClose()
     } catch (err) {
       setError(err.message || '创建失败')
     } finally {

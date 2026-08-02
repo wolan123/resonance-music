@@ -55,12 +55,13 @@ const browser = await puppeteer.launch({
   headless: true,
   args: ['--disable-gpu', '--autoplay-policy=no-user-gesture-required', '--hide-scrollbars'],
 })
+const context = await browser.createBrowserContext()
 
 const allResults = {}
-const passKeys = ['brand', 'discover', 'registered', 'uploadView', 'parsed', 'published', 'isPlaying', 'lyricsPanel', 'effectChanged', 'queuePanel', 'playlistCreated', 'songInPlaylist', 'playAllPlaying', 'profileUploads', 'profileFavorites', 'profileRecent', 'profilePlaylists', 'ownRowHasDelete', 'deleteButtonsAfterLogout', 'deleteButtonsAfterLogin', 'deleted', 'playlistDeleted']
+const passKeys = ['brand', 'discover', 'registered', 'uploadView', 'parsed', 'published', 'playerPageOpen', 'isPlaying', 'lyricsInPage', 'playerPageClosed', 'effectChanged', 'queuePanel', 'playlistCreated', 'songInPlaylist', 'playAllPlaying', 'profileUploads', 'profileFavorites', 'profileRecent', 'profilePlaylists', 'ownRowHasDelete', 'deleteButtonsAfterLogout', 'deleteButtonsAfterLogin', 'deleted', 'playlistDeleted']
 
 for (let attempt = 1; attempt <= 3; attempt += 1) {
-  const page = await browser.newPage()
+  const page = await context.newPage()
   await page.setViewport({ width: 1440, height: 960 })
   page.on('dialog', (d) => d.accept())
   const errors = []
@@ -93,8 +94,17 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
       .catch(() => false)
 
     // register
+    await page
+      .waitForFunction(
+        () => [...document.querySelectorAll('button')].some((x) => x.textContent.includes('登录 / 注册')),
+        { timeout: 30000 },
+      )
+      .catch(() => {})
     await clickByText(page, '登录 / 注册')
-    await page.waitForSelector('input[autocomplete="username"]', { timeout: 10000 })
+    await page.waitForSelector('input[autocomplete="username"]', { timeout: 15000 }).catch(async () => {
+      await clickByText(page, '登录 / 注册')
+      await page.waitForSelector('input[autocomplete="username"]', { timeout: 15000 })
+    })
     await exactClick(page, '注册')
     await page.type('input[autocomplete="username"]', uname)
     await page.type('input[type="password"]', pass)
@@ -122,15 +132,22 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
       const m = document.body.innerText.match(/(上传失败[^\n]*|读取歌曲信息失败[^\n]*)/)
       return m ? m[0] : ''
     })
-    results.published = await page
-      .waitForFunction(
-        (name, u) => document.body.innerText.includes(name) && document.body.innerText.includes(`${u} 上传`),
-        { timeout: 90000 },
-        songName,
-        uname,
-      )
-      .then(() => true)
-      .catch(() => false)
+    results.published = false
+    for (let pubTry = 0; pubTry < 3 && !results.published; pubTry += 1) {
+      if (pubTry > 0) {
+        await new Promise((r) => setTimeout(r, 3000))
+        await clickByText(page, '发布到音乐大厅')
+      }
+      results.published = await page
+        .waitForFunction(
+          (name, u) => document.body.innerText.includes(name) && document.body.innerText.includes(`${u} 上传`),
+          { timeout: 60000 },
+          songName,
+          uname,
+        )
+        .then(() => true)
+        .catch(() => false)
+    }
 
     if (results.published) {
       await new Promise((r) => setTimeout(r, 800))
@@ -140,15 +157,22 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
         if (btn) btn.click()
         return !!btn
       }, songName)
-      await new Promise((r) => setTimeout(r, 2000))
+      await new Promise((r) => setTimeout(r, 1500))
+      results.playerPageOpen = await page
+        .waitForFunction(() => !!document.querySelector('[role="dialog"][aria-label="播放页"]'), { timeout: 10000 })
+        .then(() => true)
+        .catch(() => false)
       results.isPlaying = !!(await page.$('button[aria-label="暂停"]'))
-
-      // lyrics
-      await clickByText(page, '歌词')
-      results.lyricsPanel = await page
+      results.lyricsInPage = await page
         .waitForFunction(() => document.body.innerText.includes('QA歌词第一行'), { timeout: 15000 })
         .then(() => true)
         .catch(() => false)
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button[aria-label="收起播放页"]')][0]
+        if (b) b.click()
+      })
+      await new Promise((r) => setTimeout(r, 800))
+      results.playerPageClosed = !(await page.$('[role="dialog"][aria-label="播放页"]'))
       await page.evaluate(() => {
         const b = [...document.querySelectorAll('button[aria-label="关闭歌词"]')][0]
         if (b) b.click()
@@ -169,9 +193,15 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
         if (b) b.click()
       })
       results.effectChanged = await page
-        .waitForFunction(() => [...document.querySelectorAll('button')].some((x) => x.textContent.includes('特效 极光')), {
+        .waitForFunction(
+          () => {
+            const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '播放特效')
+            return b && b.textContent.trim() === '极光'
+          },
+          {
           timeout: 5000,
-        })
+          },
+        )
         .then(() => true)
         .catch(() => false)
 
@@ -192,13 +222,13 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
       // light toggle
       results.canvas = !!(await page.$('canvas'))
       await page.evaluate(() => {
-        const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '光效')
+        const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '沉浸光效开关')
         if (b) b.click()
       })
       await new Promise((r) => setTimeout(r, 500))
       results.canvasAfterToggleOff = !!(await page.$('canvas'))
       await page.evaluate(() => {
-        const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === '光效')
+        const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '沉浸光效开关')
         if (b) b.click()
       })
       await new Promise((r) => setTimeout(r, 300))
@@ -206,11 +236,30 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
 
       // playlist create
       await clickByText(page, '歌单')
-      await page.waitForFunction(() => document.body.innerText.includes('创建歌单'), { timeout: 10000 })
+      await page
+        .waitForFunction(() => document.body.innerText.includes('创建歌单'), { timeout: 12000 })
+        .catch(async () => {
+          results.playlistNavRetried = true
+          await clickByText(page, '歌单')
+          await page.waitForFunction(() => document.body.innerText.includes('创建歌单'), { timeout: 12000 })
+        })
       await clickByText(page, '创建歌单')
       await page.waitForSelector('input[placeholder*="深夜循环"]', { timeout: 8000 })
       await page.type('input[placeholder*="深夜循环"]', plname)
+      await new Promise((r) => setTimeout(r, 400))
+      results.playlistInputDiag = await page.evaluate(() => {
+        const inp = document.querySelector('input[placeholder*="深夜循环"]')
+        return {
+          value: inp?.value,
+          submitDisabled: inp?.closest('form')?.querySelector('button[type="submit"]')?.disabled,
+          forms: document.querySelectorAll('form').length,
+        }
+      })
       await page.click('button[type="submit"]')
+      await new Promise((r) => setTimeout(r, 2500))
+      results.playlistAfterDiag = await page.evaluate(() => ({
+        dialogs: [...document.querySelectorAll('[role="dialog"]')].map((d) => d.innerText.slice(0, 120)),
+      }))
       results.playlistCreated = await page
         .waitForFunction((n) => document.body.innerText.includes(n), { timeout: 20000 }, plname)
         .then(() => true)
@@ -239,6 +288,11 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
       await clickByText(page, '播放全部')
       await new Promise((r) => setTimeout(r, 2000))
       results.playAllPlaying = !!(await page.$('button[aria-label="暂停"]'))
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button[aria-label="收起播放页"]')][0]
+        if (b) b.click()
+      })
+      await new Promise((r) => setTimeout(r, 800))
 
       // favorite + profile
       await page.evaluate(() => {
@@ -280,8 +334,11 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
       results.deleteButtonsAfterLogout = await page.$$eval('button[aria-label^="删除"]', (bs) => bs.length)
 
       // login again, delete own song
+    await clickByText(page, '登录 / 注册')
+    await page.waitForSelector('input[autocomplete="username"]', { timeout: 10000 }).catch(async () => {
       await clickByText(page, '登录 / 注册')
       await page.waitForSelector('input[autocomplete="username"]', { timeout: 10000 })
+    })
       await page.type('input[autocomplete="username"]', uname)
       await page.type('input[type="password"]', pass)
       await page.click('button[type="submit"]')
@@ -315,8 +372,10 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
       await clickByText(page, plname)
       await page.waitForFunction(() => document.body.innerText.includes('删除歌单'), { timeout: 10000 }).catch(() => {})
       await clickByText(page, '删除歌单')
-      await new Promise((r) => setTimeout(r, 1500))
-      results.playlistDeleted = !(await page.evaluate((n) => document.body.innerText.includes(n), plname))
+      results.playlistDeleted = await page
+        .waitForFunction((n) => !document.body.innerText.includes(n), { timeout: 20000 }, plname)
+        .then(() => true)
+        .catch(() => false)
     }
   } catch (e) {
     results.throwError = String(e).slice(0, 200)
@@ -325,7 +384,9 @@ for (let attempt = 1; attempt <= 3; attempt += 1) {
   results.errors = errors.slice(0, 10)
   allResults[`attempt-${attempt}`] = results
 
-  const passCount = passKeys.filter((k) => results[k] === true || results[k] === 0).length
+  const passCount = passKeys.filter(
+    (k) => results[k] === true || results[k] === 0 || (k === 'deleteButtonsAfterLogin' && results[k] >= 1),
+  ).length
   const expected = passKeys.length + 2
   if (passCount >= expected - 3 && results.published) {
     await page.setViewport({ width: 390, height: 844 })

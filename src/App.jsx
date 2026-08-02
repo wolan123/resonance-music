@@ -10,7 +10,7 @@ import RankingsView from './components/RankingsView'
 import ProfileView from './components/ProfileView'
 import UploadView from './components/UploadView'
 import PlayerBar from './components/PlayerBar'
-import LyricsPanel from './components/LyricsPanel'
+import PlayerPage from './components/PlayerPage'
 import LightCanvas from './components/LightCanvas'
 import Toasts from './components/Toasts'
 import AuthModal from './components/AuthModal'
@@ -104,7 +104,7 @@ export default function App() {
   const [visualizerOn, setVisualizerOn] = useState(true)
   const [effectMode, setEffectMode] = useState(() => localStorage.getItem(EFFECT_KEY) || 'dynamic')
   const [analyser, setAnalyser] = useState(null)
-  const [lyricsOpen, setLyricsOpen] = useState(false)
+  const [playerOpen, setPlayerOpen] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
   const [addToTrack, setAddToTrack] = useState(null)
 
@@ -232,6 +232,7 @@ export default function App() {
       const safe = idx < 0 ? 0 : idx
       indexRef.current = safe
       setIndex(safe)
+      setPlayerOpen(true)
       audio.src = track.audioUrl
       audio.play().catch(() => {})
       reportTrack(track)
@@ -721,13 +722,10 @@ export default function App() {
         currentTime={currentTime}
         onTogglePlay={togglePlay}
         onNext={next}
-        onPrev={prev}
         onToggleFavorite={toggleFavorite}
         isFavorite={currentTrack ? isFav(currentTrack) : false}
         audio={audio}
-        volume={volume}
-        onVolumeChange={setVolume}
-        onOpenLyrics={() => setLyricsOpen(true)}
+        onOpenPlayer={() => setPlayerOpen(true)}
         onOpenQueue={() => setQueueOpen(true)}
         hasLyrics={!!currentLrc}
         visualizerOn={visualizerOn}
@@ -736,12 +734,21 @@ export default function App() {
         onEffectModeChange={setEffectMode}
       />
 
-      <LyricsPanel
-        open={lyricsOpen}
+      <PlayerPage
+        open={playerOpen}
+        onClose={() => setPlayerOpen(false)}
         track={currentTrack}
-        lrc={currentLrc}
+        isPlaying={isPlaying && !!currentTrack}
         currentTime={currentTime}
-        onClose={() => setLyricsOpen(false)}
+        onTogglePlay={togglePlay}
+        onNext={next}
+        onPrev={prev}
+        onToggleFavorite={toggleFavorite}
+        isFavorite={currentTrack ? isFav(currentTrack) : false}
+        audio={audio}
+        volume={volume}
+        onVolumeChange={setVolume}
+        lrc={currentLrc}
         onFetchLyrics={fetchLyricsFor}
         onSeek={(t) => {
           try {
@@ -750,6 +757,9 @@ export default function App() {
             /* ignore */
           }
         }}
+        onAddToPlaylist={handleAddToPlaylistTrack}
+        effectMode={effectMode}
+        onEffectModeChange={setEffectMode}
       />
 
       <QueuePanel
