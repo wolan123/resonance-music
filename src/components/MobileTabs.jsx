@@ -1,11 +1,11 @@
-import { Compass, Playlist, Trophy, UploadSimple, User } from '@phosphor-icons/react'
+import { Cloud, Compass, Playlist, Trophy, User } from '@phosphor-icons/react'
 
 const TABS = [
   { key: 'discover', label: '发现', icon: Compass },
   { key: 'playlists', label: '歌单', icon: Playlist },
   { key: 'rankings', label: '排行', icon: Trophy },
+  { key: 'cloud', label: '云音乐', icon: Cloud },
   { key: 'profile', label: '我的', icon: User },
-  { key: 'upload', label: '上传', icon: UploadSimple },
 ]
 
 export default function MobileTabs({ view, onChangeView, onOpenAuth }) {

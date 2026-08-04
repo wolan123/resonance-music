@@ -9,6 +9,7 @@ import PlaylistDetailView from './components/PlaylistDetailView'
 import RankingsView from './components/RankingsView'
 import ProfileView from './components/ProfileView'
 import UploadView from './components/UploadView'
+import CloudView from './components/CloudView'
 import PlayerBar from './components/PlayerBar'
 import PlayerPage from './components/PlayerPage'
 import LightCanvas from './components/LightCanvas'
@@ -32,6 +33,7 @@ import {
   reportPlay,
 } from './lib/api'
 import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
+import { cloudLyrics, resolveCloudTrack } from './lib/cloud'
 import { getAnalyser } from './lib/visualizer'
 import { loadFavorites, loadVolume, saveFavorites, saveVolume } from './lib/storage'
 
@@ -58,6 +60,9 @@ function saveRecent(list) {
 function snapshotTrack(track) {
   return {
     id: track.id,
+    source: track.source,
+    platform: track.platform,
+    platformId: track.platformId,
     title: track.title,
     artist: track.artist,
     album: track.album,
@@ -207,25 +212,47 @@ export default function App() {
   }, [])
 
   const playAt = useCallback(
-    (i) => {
+    async (i) => {
       const list = queueRef.current
       if (!list.length) return
       const safe = ((i % list.length) + list.length) % list.length
       indexRef.current = safe
       setIndex(safe)
       const track = list[safe]
-      audio.src = track.audioUrl
+      let src = track.audioUrl
+      if (!src && track.source === 'cloud') {
+        try {
+          src = await resolveCloudTrack(track)
+          const updated = list.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
+          queueRef.current = updated
+          setQueue(updated)
+        } catch (e) {
+          toast(e.message || '播放地址获取失败')
+          return
+        }
+      }
+      audio.src = src
       audio.play().catch(() => {})
       reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio, ensureAnalyser, reportTrack],
+    [audio, ensureAnalyser, reportTrack, toast],
   )
 
   const playTrack = useCallback(
-    (track, list) => {
-      const target = list && list.length ? list : queueRef.current
+    async (track, list) => {
+      let target = list && list.length ? list : queueRef.current
       if (!target.length) return
+      let src = track.audioUrl
+      if (!src && track.source === 'cloud') {
+        try {
+          src = await resolveCloudTrack(track)
+          target = target.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
+        } catch (e) {
+          toast(e.message || '播放地址获取失败')
+          return
+        }
+      }
       queueRef.current = target
       setQueue(target)
       const idx = target.findIndex((t) => t.id === track.id)
@@ -233,12 +260,12 @@ export default function App() {
       indexRef.current = safe
       setIndex(safe)
       setPlayerOpen(true)
-      audio.src = track.audioUrl
+      audio.src = src
       audio.play().catch(() => {})
       reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio, ensureAnalyser, reportTrack],
+    [audio, ensureAnalyser, reportTrack, toast],
   )
 
   const next = useCallback(() => playAt(indexRef.current + 1), [playAt])
@@ -340,11 +367,20 @@ export default function App() {
       const existing = getLrcText(track)
       if (existing) return existing
       let lrc = null
+      if (track.source === 'cloud') {
+        try {
+          lrc = (await cloudLyrics(track)) || null
+        } catch {
+          lrc = null
+        }
+      }
+      if (!lrc) {
       try {
         const data = await autoMatchLyrics(track.id)
         lrc = data.lrc || null
       } catch {
         lrc = null
+      }
       }
       if (!lrc) {
         try {
@@ -676,6 +712,18 @@ export default function App() {
               {view === 'rankings' && (
                 <motion.div key="rankings" {...anim}>
                   <RankingsView songs={songs} currentTrack={currentTrack} isPlaying={isPlaying} onPlay={playTrack} />
+                </motion.div>
+              )}
+              {view === 'cloud' && (
+                <motion.div key="cloud" {...anim}>
+                  <CloudView
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    isFav={isFav}
+                    hasLyrics={getLrcText}
+                    onPlay={playTrack}
+                    onToggleFavorite={toggleFavorite}
+                  />
                 </motion.div>
               )}
               {view === 'profile' && (
