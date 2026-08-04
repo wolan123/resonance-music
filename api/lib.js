@@ -14,6 +14,7 @@ const USER_PREFIX = 'users/'
 const SESSION_PREFIX = 'users/sessions/'
 const SONG_PREFIX = 'songs/'
 const PLAYLIST_PREFIX = 'playlists/'
+const CLOUD_PREFIX = 'cloud/'
 const SESSION_TTL = 30 * 24 * 3600 * 1000
 
 export function parseCookies(req) {
@@ -42,6 +43,14 @@ export function setSessionCookie(res, token) {
 
 export function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', 'lumen_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure')
+}
+
+export function isAdminUser(user) {
+  const admins = String(process.env.ADMIN_USERNAMES || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  return !!user && admins.includes(String(user.username || '').toLowerCase())
 }
 
 export function hashPassword(password, salt) {
@@ -194,6 +203,21 @@ export async function readPlaylistFile(pathname) {
 
 export async function writePlaylistFile(playlist) {
   await writeBlob(`${PLAYLIST_PREFIX}${playlist.id}.json`, JSON.stringify(playlist), 'application/json')
+}
+
+export async function readCloudCreds() {
+  const text = await readBlobText(`${CLOUD_PREFIX}creds.json`)
+  if (!text) return null
+  try {
+    const data = JSON.parse(decrypt(text))
+    return data && typeof data === 'object' ? data : null
+  } catch {
+    return null
+  }
+}
+
+export async function writeCloudCreds(creds) {
+  await writeBlob(`${CLOUD_PREFIX}creds.json`, encrypt(JSON.stringify(creds || {})), 'application/octet-stream')
 }
 
 export async function readAllPlaylists() {

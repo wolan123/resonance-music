@@ -4,12 +4,20 @@ import {
   search as qqSearch,
   lyric as qqLyric,
 } from '@sansenjian/qq-music-api/sdk'
+import {
+  cleanString,
+  getSessionUser,
+  isAdminUser,
+  readCloudCreds,
+  writeCloudCreds,
+} from './lib.js'
 
 export const config = { maxDuration: 60 }
 
 const GUEST_UIN = '956581739'
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+const HTTPS_CDNS = ['https://isure.stream.qqmusic.qq.com/', 'https://dl.stream.qqmusic.qq.com/']
 
 function parseCookieString(str) {
   const obj = {}
@@ -22,8 +30,68 @@ function parseCookieString(str) {
   return obj
 }
 
-// QQ 音乐播放地址：CgiGetVkey 需要完整 query 参数，
-// 未登录只能拿到 104003（无权限），必须带登录 cookie（含 qqmusic_key）才能出 purl。
+async function sharedCookie() {
+  const creds = await readCloudCreds()
+  return creds?.qq?.cookie || ''
+}
+
+async function adminGuard(req, res) {
+  const user = await getSessionUser(req)
+  if (!user) {
+    res.status(401).json({ error: '请先登录' })
+    return null
+  }
+  if (!isAdminUser(user)) {
+    res.status(403).json({ error: '仅管理员可绑定共享会员' })
+    return null
+  }
+  return user
+}
+
+async function probePlayable(url, timeoutMs = 6000) {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const r = await fetch(url, {
+        headers: { Range: 'bytes=0-65535', 'User-Agent': UA, Referer: 'https://y.qq.com/' },
+        redirect: 'follow',
+        signal: controller.signal,
+      })
+      if (!r.ok && r.status !== 206) return false
+      const buf = await r.arrayBuffer()
+      return buf.byteLength > 8192
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch {
+    return false
+  }
+}
+
+// QQ 播放链接：拿到 purl 后拼 https CDN（浏览器禁止 http 混内容）。
+// 先探测哪些 https 域名能真正返回音频，再返回第一个可播的。
+async function buildHttpsPlayUrl(purl, sipDomains) {
+  const candidates = []
+  const seen = new Set()
+  const add = (u) => {
+    if (u && !seen.has(u)) {
+      seen.add(u)
+      candidates.push(u)
+    }
+  }
+  const purlPath = String(purl || '').startsWith('/') ? purl : `/${purl}`
+  for (const domain of sipDomains || []) {
+    const host = String(domain).replace(/^https?:\/\//, '').replace(/\/+$/, '')
+    if (host) add(`https://${host}${purlPath}`)
+  }
+  for (const cdn of HTTPS_CDNS) add(`${cdn}${purlPath.replace(/^\//, '')}`)
+  for (const url of candidates) {
+    if (await probePlayable(url)) return url
+  }
+  return candidates[0] || ''
+}
+
 async function fetchPlayUrl(songmid, cookieStr) {
   const cookieObj = parseCookieString(cookieStr)
   const uin = cookieObj.uin || GUEST_UIN
@@ -51,20 +119,16 @@ async function fetchPlayUrl(songmid, cookieStr) {
   const json = await res.json().catch(() => ({}))
   const req0 = json?.req_0?.data
   if (!req0) return { url: '', error: json?.req_0?.msg || '获取播放链接失败' }
-  const domain =
-    (req0.sip || []).find((i) => !String(i).startsWith('http://ws')) || req0.sip?.[0] || ''
   const item = (req0.midurlinfo || []).find((x) => x.songmid === songmid)
   if (!item?.purl) {
     const needLogin = cookieObj.uin && cookieObj.uin !== GUEST_UIN
     return {
       url: '',
-      error: needLogin
-        ? '该歌曲需要 QQ 音乐会员或暂不可播'
-        : '请先扫码登录 QQ 音乐后再播放',
+      error: needLogin ? '该歌曲需要 QQ 音乐会员或暂不可播' : '请先登录 QQ 音乐（扫码或绑定共享会员）后再播放',
     }
   }
-  let playUrl = `${domain}${item.purl}`
-  if (playUrl.startsWith('http://')) playUrl = playUrl.replace('http://', 'https://')
+  const playUrl = await buildHttpsPlayUrl(item.purl, req0.sip)
+  if (!playUrl) return { url: '', error: '播放地址不可用，请重试' }
   return { url: playUrl }
 }
 
@@ -73,6 +137,44 @@ export default async function handler(req, res) {
   const action = String(body.action || '')
   const cookieStr = String(body.cookie || '')
   try {
+    if (action === 'adminStatus') {
+      if (!(await adminGuard(req, res))) return
+      const creds = await readCloudCreds()
+      const info = creds?.qq
+      return res.json({
+        user: info ? { nickname: info.nickname || info.uin || '已绑定', uin: info.uin } : null,
+      })
+    }
+
+    if (action === 'sharedStatus') {
+      const creds = await readCloudCreds()
+      const info = creds?.qq
+      return res.json({
+        user: info ? { nickname: info.nickname || info.uin || '已绑定', uin: info.uin } : null,
+      })
+    }
+
+    if (action === 'adminUnbind') {
+      if (!(await adminGuard(req, res))) return
+      const creds = (await readCloudCreds()) || {}
+      delete creds.qq
+      await writeCloudCreds(creds)
+      return res.json({ ok: true })
+    }
+
+    if (action === 'adminQrCreate') {
+      if (!(await adminGuard(req, res))) return
+      const qr = await getLoginQr()
+      const b = qr.body || {}
+      if (!b.img || !b.qrsig || !b.ptqrtoken) {
+        return res.status(502).json({ error: b.error || '二维码生成失败' })
+      }
+      return res.json({
+        image: b.img,
+        cookie: JSON.stringify({ qrsig: b.qrsig, ptqrtoken: b.ptqrtoken }),
+      })
+    }
+
     if (action === 'qrCreate') {
       const qr = await getLoginQr()
       const b = qr.body || {}
@@ -112,6 +214,41 @@ export default async function handler(req, res) {
       return res.json({ state: 'waiting', message: b.message || '等待扫码' })
     }
 
+    if (action === 'adminQrPoll') {
+      if (!(await adminGuard(req, res))) return
+      let session = {}
+      try {
+        session = JSON.parse(cookieStr || '{}')
+      } catch {
+        /* ignore */
+      }
+      if (!session.qrsig || !session.ptqrtoken) {
+        return res.json({ state: 'expired', message: '二维码已失效，请刷新' })
+      }
+      const r = await checkLoginQr({
+        ptqrtoken: session.ptqrtoken,
+        qrsig: session.qrsig,
+      })
+      const b = r.body || {}
+      if (b.isOk) {
+        const sessionInfo = b.session || {}
+        const creds = (await readCloudCreds()) || {}
+        creds.qq = {
+          cookie: sessionInfo.cookie || '',
+          uin: sessionInfo.uin || '',
+          nickname: sessionInfo.uin || 'QQ 用户',
+          updatedAt: Date.now(),
+        }
+        await writeCloudCreds(creds)
+        return res.json({
+          state: 'success',
+          user: { nickname: creds.qq.nickname, uin: creds.qq.uin },
+        })
+      }
+      if (b.refresh) return res.json({ state: 'expired', message: '二维码已过期，请刷新' })
+      return res.json({ state: 'waiting', message: b.message || '等待扫码' })
+    }
+
     const cookieObj = parseCookieString(cookieStr)
 
     if (action === 'status') {
@@ -121,7 +258,7 @@ export default async function handler(req, res) {
 
     if (action === 'search') {
       const s = await qqSearch({
-        key: String(body.keywords || '').slice(0, 100),
+        key: cleanString(body.keywords, 100),
         limit: 30,
         page: 1,
       })
@@ -142,16 +279,21 @@ export default async function handler(req, res) {
     }
 
     if (action === 'url') {
-      const songmid = String(body.id || '').slice(0, 100)
+      const songmid = cleanString(body.id, 100)
       if (!songmid) return res.status(400).json({ error: '缺少歌曲 ID' })
-      const result = await fetchPlayUrl(songmid, cookieStr)
+      const effectiveCookie = cookieStr || (await sharedCookie())
+      const result = await fetchPlayUrl(songmid, effectiveCookie)
       if (!result.url) return res.status(403).json({ error: result.error })
       return res.json({ url: result.url })
     }
 
     if (action === 'lyric') {
-      const songmid = String(body.id || '').slice(0, 100)
-      const l = await qqLyric({ songmid, isFormat: false })
+      const songmid = cleanString(body.id, 100)
+      const l = await qqLyric({
+        songmid,
+        isFormat: false,
+        cookie: cookieStr || (await sharedCookie()),
+      })
       const resp = l.body?.response || {}
       const raw = resp.lyric
       const lrc = typeof raw === 'string' ? raw : raw?.lyric || ''

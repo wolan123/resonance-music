@@ -8,7 +8,7 @@ const PLATFORM_NAME = {
   qq: 'QQ 音乐',
 }
 
-export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
+export default function QRLoginModal({ platform, mode = 'personal', open, onClose, onSuccess }) {
   const [image, setImage] = useState('')
   const [status, setStatus] = useState('loading')
   const [message, setMessage] = useState('')
@@ -22,13 +22,13 @@ export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
     setMessage('')
     try {
       if (platform === 'netease') {
-        const keyData = await cloudRequest('netease', 'qrKey')
+        const keyData = await cloudRequest('netease', mode === 'admin' ? 'adminQrKey' : 'qrKey')
         sessionRef.current = keyData.key || ''
         const qr = await cloudRequest('netease', 'qrCreate', { key: sessionRef.current })
         setImage(qr.qrimg || '')
         setStatus('waiting')
       } else {
-        const qr = await cloudRequest('qq', 'qrCreate')
+        const qr = await cloudRequest('qq', mode === 'admin' ? 'adminQrCreate' : 'qrCreate')
         sessionRef.current = qr.cookie || ''
         setImage(qr.image || '')
         setStatus('waiting')
@@ -43,14 +43,16 @@ export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
 
   useEffect(() => {
     if (open) createQR()
-  }, [open, platform])
+  }, [open, platform, mode])
 
   useEffect(() => {
     if (!open || status !== 'waiting') return
     timerRef.current = setInterval(async () => {
       try {
         if (platform === 'netease') {
-          const data = await cloudRequest('netease', 'qrCheck', { key: sessionRef.current })
+          const data = await cloudRequest('netease', mode === 'admin' ? 'adminQrCheck' : 'qrCheck', {
+            key: sessionRef.current,
+          })
           if (data.code === 802) {
             setMessage('已扫码，请在手机上确认')
           } else if (data.code === 800) {
@@ -58,19 +60,21 @@ export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
           } else if (data.code === 803) {
             setStatus('success')
             setMessage('登录成功')
-            onSuccess(data.cookie || '')
+            onSuccess(mode === 'admin' ? data : data.cookie || '')
           } else if (data.code === 801) {
             setStatus('expired')
             setMessage('二维码已过期，点击刷新')
           }
         } else {
-          const data = await cloudRequest('qq', 'qrPoll', { cookie: sessionRef.current })
+          const data = await cloudRequest('qq', mode === 'admin' ? 'adminQrPoll' : 'qrPoll', {
+            cookie: sessionRef.current,
+          })
           if (data.state === 'waiting') {
             setMessage('请用手机 QQ 扫码')
           } else if (data.state === 'success') {
             setStatus('success')
             setMessage('登录成功')
-            onSuccess(data.cookie || '')
+            onSuccess(mode === 'admin' ? data : data.cookie || '')
           } else if (data.state === 'expired') {
             setStatus('expired')
             setMessage('二维码已过期，点击刷新')
@@ -86,7 +90,7 @@ export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
       }
     }, 2000)
     return () => clearInterval(timerRef.current)
-  }, [open, platform, status, onSuccess])
+  }, [open, platform, mode, status, onSuccess])
 
   return (
     <AnimatePresence>
@@ -115,8 +119,12 @@ export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
             >
               <X size={16} weight="bold" />
             </button>
-            <h2 className="text-base font-bold text-white">扫码登录 {PLATFORM_NAME[platform]}</h2>
-            <p className="mt-1 text-xs text-mist-500">登录后即可用你的会员听歌</p>
+            <h2 className="text-base font-bold text-white">
+              {mode === 'admin' ? '绑定共享会员' : `扫码登录 ${PLATFORM_NAME[platform]}`}
+            </h2>
+            <p className="mt-1 text-xs text-mist-500">
+              {mode === 'admin' ? '绑定后全站用户可用该会员听歌，账号凭证不会公开' : '登录后即可用你的会员听歌'}
+            </p>
 
             <div className="mx-auto mt-5 flex h-52 w-52 items-center justify-center rounded-2xl bg-white p-2">
               {image ? (
@@ -126,7 +134,9 @@ export default function QRLoginModal({ platform, open, onClose, onSuccess }) {
               )}
             </div>
 
-            <p className="mt-4 text-sm text-mist-400">{message || (busy ? '正在生成二维码…' : '等待扫码')}</p>
+            <p className="mt-4 text-sm text-mist-400">
+              {message || (busy ? '正在生成二维码…' : '等待扫码')}
+            </p>
 
             {status === 'expired' || status === 'error' ? (
               <button

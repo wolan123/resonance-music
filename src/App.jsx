@@ -67,6 +67,7 @@ function snapshotTrack(track) {
     artist: track.artist,
     album: track.album,
     artworkUrl: track.artworkUrl,
+    artwork: track.artwork,
     audioUrl: track.audioUrl,
     durationMs: track.durationMs,
     uploader: track.uploader,
@@ -233,7 +234,7 @@ export default function App() {
       }
       audio.src = src
       audio.play().catch(() => {})
-      reportTrack(track)
+      if (track.source !== 'cloud') reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
     [audio, ensureAnalyser, reportTrack, toast],
@@ -262,7 +263,7 @@ export default function App() {
       setPlayerOpen(true)
       audio.src = src
       audio.play().catch(() => {})
-      reportTrack(track)
+      if (track.source !== 'cloud') reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
     [audio, ensureAnalyser, reportTrack, toast],
@@ -375,12 +376,14 @@ export default function App() {
         }
       }
       if (!lrc) {
-      try {
-        const data = await autoMatchLyrics(track.id)
-        lrc = data.lrc || null
-      } catch {
-        lrc = null
-      }
+        if (track.source !== 'cloud') {
+          try {
+            const data = await autoMatchLyrics(track.id)
+            lrc = data.lrc || null
+          } catch {
+            lrc = null
+          }
+        }
       }
       if (!lrc) {
         try {
@@ -723,6 +726,7 @@ export default function App() {
                     hasLyrics={getLrcText}
                     onPlay={playTrack}
                     onToggleFavorite={toggleFavorite}
+                    user={user}
                   />
                 </motion.div>
               )}

@@ -29,7 +29,7 @@ export function fallbackArtwork(seed = 'music', size = 300) {
 }
 
 export function artworkOf(track) {
-  return track?.artworkUrl || fallbackArtwork(track?.artist || track?.title || 'music')
+  return track?.artworkUrl || track?.artwork || fallbackArtwork(track?.artist || track?.title || 'music')
 }
 
 export async function fetchSongs() {
