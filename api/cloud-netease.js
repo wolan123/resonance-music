@@ -134,18 +134,31 @@ export default async function handler(req, res) {
         type: 1,
         realIP: REAL_IP,
       })
-      const songs = (r.body?.result?.songs || []).map((s) => ({
+      const list = r.body?.result?.songs || []
+      // 搜索接口只返回数字 picId，需按歌曲 id 批量拉 song_detail 才能拿到有效封面 URL
+      let coverMap = {}
+      if (list.length) {
+        try {
+          const ids = list.map((s) => s.id).filter(Boolean).slice(0, 40).join(',')
+          const detail = await Netease.song_detail({ ids, realIP: REAL_IP })
+          coverMap = Object.fromEntries(
+            (detail.body?.songs || [])
+              .map((s) => [String(s.id), s.al?.picUrl ? s.al.picUrl.replace(/^http:/, 'https:') : ''])
+              .filter(([, v]) => v),
+          )
+        } catch {
+          coverMap = {}
+        }
+      }
+      const songs = list.map((s) => ({
         id: `cloud-netease-${s.id}`,
+        source: 'cloud',
         platform: 'netease',
         platformId: String(s.id),
         title: s.name || '未知曲目',
         artist: (s.artists || []).map((a) => a.name).filter(Boolean).join(' / ') || '未知歌手',
         album: s.album?.name || '',
-        artwork: s.album?.picUrl
-          ? s.album.picUrl.replace(/^http:/, 'https:')
-          : s.album?.picId
-            ? `https://p1.music.126.net/${s.album.picId}.jpg`
-            : null,
+        artwork: coverMap[String(s.id)] || null,
         durationMs: s.duration || 0,
       }))
       return res.json({ songs })

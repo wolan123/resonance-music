@@ -33,7 +33,7 @@ import {
   reportPlay,
 } from './lib/api'
 import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
-import { cloudLyrics, resolveCloudTrack } from './lib/cloud'
+import { cloudLyrics, isCloudTrack, resolveCloudTrack } from './lib/cloud'
 import { getAnalyser } from './lib/visualizer'
 import { loadFavorites, loadVolume, saveFavorites, saveVolume } from './lib/storage'
 
@@ -221,7 +221,7 @@ export default function App() {
       setIndex(safe)
       const track = list[safe]
       let src = track.audioUrl
-      if (!src && track.source === 'cloud') {
+      if (!src && isCloudTrack(track)) {
         try {
           src = await resolveCloudTrack(track)
           const updated = list.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
@@ -234,7 +234,7 @@ export default function App() {
       }
       audio.src = src
       audio.play().catch(() => {})
-      if (track.source !== 'cloud') reportTrack(track)
+      if (!isCloudTrack(track)) reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
     [audio, ensureAnalyser, reportTrack, toast],
@@ -245,7 +245,7 @@ export default function App() {
       let target = list && list.length ? list : queueRef.current
       if (!target.length) return
       let src = track.audioUrl
-      if (!src && track.source === 'cloud') {
+      if (!src && isCloudTrack(track)) {
         try {
           src = await resolveCloudTrack(track)
           target = target.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
@@ -263,7 +263,7 @@ export default function App() {
       setPlayerOpen(true)
       audio.src = src
       audio.play().catch(() => {})
-      if (track.source !== 'cloud') reportTrack(track)
+      if (!isCloudTrack(track)) reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
     [audio, ensureAnalyser, reportTrack, toast],
@@ -368,7 +368,7 @@ export default function App() {
       const existing = getLrcText(track)
       if (existing) return existing
       let lrc = null
-      if (track.source === 'cloud') {
+      if (isCloudTrack(track)) {
         try {
           lrc = (await cloudLyrics(track)) || null
         } catch {
@@ -376,7 +376,7 @@ export default function App() {
         }
       }
       if (!lrc) {
-        if (track.source !== 'cloud') {
+        if (!isCloudTrack(track)) {
           try {
             const data = await autoMatchLyrics(track.id)
             lrc = data.lrc || null

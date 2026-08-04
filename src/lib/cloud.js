@@ -3,6 +3,10 @@ const STORAGE = {
   qq: 'lumen.cloud.qq.v1',
 }
 
+export function isCloudTrack(track) {
+  return !!track && (track.source === 'cloud' || !!track.platform)
+}
+
 export function loadCloudCookie(platform) {
   try {
     return localStorage.getItem(STORAGE[platform]) || ''

@@ -265,6 +265,7 @@ export default async function handler(req, res) {
       const list = s.body?.response?.data?.song?.list || []
       const songs = list.map((x) => ({
         id: `cloud-qq-${x.songmid}`,
+        source: 'cloud',
         platform: 'qq',
         platformId: String(x.songmid || ''),
         title: x.songname || '未知曲目',
