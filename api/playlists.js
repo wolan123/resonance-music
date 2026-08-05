@@ -15,6 +15,7 @@ function publicPlaylist(pl) {
     creatorId: pl.creatorId,
     creatorName: pl.creatorName,
     trackIds: pl.trackIds,
+    tracks: pl.tracks || [],
     playCount: pl.playCount || 0,
     createdAt: pl.createdAt,
     updatedAt: pl.updatedAt,
@@ -83,11 +84,35 @@ export default async function handler(req, res) {
       if (target.creatorId !== user.id) return res.status(403).json({ error: '只能编辑自己创建的歌单' })
 
       if (action === 'add') {
-        const songs = await readAllSongs()
-        if (!songs.some((s) => s.id === trackId)) return res.status(400).json({ error: '歌曲不存在' })
-        if (!target.trackIds.includes(trackId)) target.trackIds.push(trackId)
+        const snapshot = body.track && typeof body.track === 'object' ? body.track : null
+        if (snapshot && snapshot.title) {
+          // 云歌曲：直接存快照，不依赖本地曲库
+          const cleanTrack = {
+            id: trackId,
+            source: snapshot.source || 'cloud',
+            platform: snapshot.platform || '',
+            platformId: String(snapshot.platformId || ''),
+            title: cleanString(snapshot.title, 120),
+            artist: cleanString(snapshot.artist, 80) || '未知歌手',
+            album: cleanString(snapshot.album, 120) || '',
+            artwork: cleanString(snapshot.artwork, 1000) || null,
+            artworkUrl: cleanString(snapshot.artworkUrl, 1000) || null,
+            durationMs: Number(snapshot.durationMs) || 0,
+          }
+          if (!target.tracks) target.tracks = []
+          const exists = target.tracks.some((t) => t.id === trackId)
+          if (!exists) {
+            target.tracks.push(cleanTrack)
+            target.trackIds.push(trackId)
+          }
+        } else {
+          const songs = await readAllSongs()
+          if (!songs.some((s) => s.id === trackId)) return res.status(400).json({ error: '歌曲不存在' })
+          if (!target.trackIds.includes(trackId)) target.trackIds.push(trackId)
+        }
       } else {
         target.trackIds = target.trackIds.filter((t) => t !== trackId)
+        if (Array.isArray(target.tracks)) target.tracks = target.tracks.filter((t) => t.id !== trackId)
       }
       target.updatedAt = Date.now()
       await writePlaylistFile(target)

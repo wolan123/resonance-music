@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Plus, Spinner, X } from '@phosphor-icons/react'
 import PlaylistCover from './PlaylistCover'
-import { artworkOf } from '../lib/api'
+import { artworkOf, resolvePlaylistTracks } from '../lib/api'
 
 export default function AddToPlaylistModal({
   track,
@@ -83,7 +83,7 @@ export default function AddToPlaylistModal({
                     <PlaylistCover playlist={pl} songs={songs} className="h-10 w-10 shrink-0 rounded-lg" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-white">{pl.name}</span>
-                      <span className="block text-xs text-mist-500">{pl.trackIds.length} 首</span>
+                      <span className="block text-xs text-mist-500">{resolvePlaylistTracks(pl, songs).length} 首</span>
                     </span>
                     {has && <Check size={16} weight="bold" className="text-cyan-300" />}
                   </button>

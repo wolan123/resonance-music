@@ -1,11 +1,8 @@
 import { MusicNotes } from '@phosphor-icons/react'
-import { artworkOf } from '../lib/api'
+import { artworkOf, resolvePlaylistTracks } from '../lib/api'
 
 export default function PlaylistCover({ playlist, songs, className = '' }) {
-  const tracks = (playlist.trackIds || [])
-    .map((id) => songs.find((s) => s.id === id))
-    .filter(Boolean)
-    .slice(0, 4)
+  const tracks = resolvePlaylistTracks(playlist, songs).slice(0, 4)
 
   return (
     <div className={`overflow-hidden bg-gradient-to-br from-violet-600/40 to-cyan-500/30 ${className}`}>

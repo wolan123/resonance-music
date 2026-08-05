@@ -2,6 +2,7 @@ import { ArrowLeft, Play, Plus, Trash } from '@phosphor-icons/react'
 import TrackRow from './TrackRow'
 import PlaylistCover from './PlaylistCover'
 import SongPickerModal from './SongPickerModal'
+import { resolvePlaylistTracks } from '../lib/api'
 import { formatPlays } from '../lib/format'
 
 export default function PlaylistDetailView({
@@ -24,9 +25,7 @@ export default function PlaylistDetailView({
   onToggleSong,
 }) {
   if (!playlist) return null
-  const tracks = (playlist.trackIds || [])
-    .map((id) => songs.find((s) => s.id === id))
-    .filter(Boolean)
+  const tracks = resolvePlaylistTracks(playlist, songs)
   const isOwner = !!user && playlist.creatorId === user.id
 
   return (

@@ -220,6 +220,20 @@ export async function writeCloudCreds(creds) {
   await writeBlob(`${CLOUD_PREFIX}creds.json`, encrypt(JSON.stringify(creds || {})), 'application/octet-stream')
 }
 
+export async function readPlainJson(pathname, fallback = null) {
+  const text = await readBlobText(pathname)
+  if (!text) return fallback
+  try {
+    return JSON.parse(text)
+  } catch {
+    return fallback
+  }
+}
+
+export async function writePlainJson(pathname, obj) {
+  await writeBlob(pathname, JSON.stringify(obj), 'application/json')
+}
+
 export async function readAllPlaylists() {
   const { blobs } = await list({ prefix: PLAYLIST_PREFIX })
   const files = blobs

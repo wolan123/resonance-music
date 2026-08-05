@@ -95,6 +95,13 @@ export async function fetchPlaylists() {
   return Array.isArray(data.playlists) ? data.playlists : []
 }
 
+export function resolvePlaylistTracks(playlist, songs) {
+  const byId = new Map((playlist?.tracks || []).map((t) => [t.id, t]))
+  return (playlist?.trackIds || [])
+    .map((id) => songs.find((s) => s.id === id) || byId.get(id))
+    .filter(Boolean)
+}
+
 async function playlistRequest(action, payload = {}) {
   const res = await fetch('/api/playlists', {
     method: 'POST',
@@ -107,7 +114,7 @@ async function playlistRequest(action, payload = {}) {
 }
 
 export const createPlaylist = (name, description) => playlistRequest('create', { name, description })
-export const addToPlaylist = (id, trackId) => playlistRequest('add', { id, trackId })
+export const addToPlaylist = (id, trackId, track) => playlistRequest('add', { id, trackId, track })
 export const removeFromPlaylist = (id, trackId) => playlistRequest('remove', { id, trackId })
 
 export async function deletePlaylist(id) {
@@ -121,13 +128,24 @@ export async function deletePlaylist(id) {
   return true
 }
 
-export async function reportPlay(id) {
+export async function reportPlay(id, cloudTrack) {
   const res = await fetch('/api/play', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
+    body: JSON.stringify({ id, cloud: cloudTrack || undefined }),
   })
   if (!res.ok) return
   const data = await res.json().catch(() => ({}))
   return data.playCount
+}
+
+export async function fetchRankings() {
+  const res = await fetch('/api/rankings', { signal: AbortSignal.timeout(20000) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '排行榜加载失败')
+  return {
+    hot: Array.isArray(data.hot) ? data.hot : [],
+    fresh: Array.isArray(data.fresh) ? data.fresh : [],
+    siteHot: Array.isArray(data.siteHot) ? data.siteHot : [],
+  }
 }

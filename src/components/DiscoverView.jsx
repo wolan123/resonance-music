@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react'
-import { CaretRight, Play, Trophy } from '@phosphor-icons/react'
+import { CaretRight, Play, Trophy, TrendUp } from '@phosphor-icons/react'
 import TrackRow from './TrackRow'
 import PlaylistCover from './PlaylistCover'
 import { SkeletonRows } from './Skeleton'
-import { artworkOf } from '../lib/api'
+import { artworkOf, resolvePlaylistTracks } from '../lib/api'
 import { formatPlays } from '../lib/format'
 
 const HUES = [265, 190, 320, 220]
 
 export default function DiscoverView({
-  songs,
   playlists,
+  rankings,
   loading,
+  rankingsLoading,
   currentTrack,
   isPlaying,
   isFav,
@@ -22,8 +23,13 @@ export default function DiscoverView({
   onOpenPlaylist,
   onGoPlaylists,
   onGoRankings,
+  onGoCloud,
 }) {
   const [bannerIdx, setBannerIdx] = useState(0)
+
+  const hot = rankings.hot || []
+  const fresh = rankings.fresh || []
+  const siteHot = rankings.siteHot || []
 
   const banners = useMemo(() => {
     const fromPlaylists = playlists.slice(0, 4).map((pl, i) => ({
@@ -32,7 +38,7 @@ export default function DiscoverView({
       key: `pl-${pl.id}`,
       hue: HUES[i % HUES.length],
     }))
-    const fromSongs = songs.slice(0, 4).map((s, i) => ({
+    const fromSongs = hot.slice(0, 4).map((s, i) => ({
       type: 'song',
       song: s,
       key: `s-${s.id}`,
@@ -40,15 +46,9 @@ export default function DiscoverView({
     }))
     const merged = [...fromPlaylists, ...fromSongs].slice(0, 4)
     return merged.length ? merged : [{ type: 'empty', key: 'empty', hue: 265 }]
-  }, [playlists, songs])
+  }, [playlists, hot])
 
-  const hot = useMemo(() => [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 10), [songs])
-  const fresh = useMemo(
-    () => [...songs].sort((a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0)).slice(0, 10),
-    [songs],
-  )
-
-  if (loading) {
+  if (loading || rankingsLoading) {
     return (
       <div className="pt-6 lg:pt-8">
         <div className="h-44 animate-pulse rounded-[1.6rem] bg-white/[0.05] sm:h-56" />
@@ -57,18 +57,20 @@ export default function DiscoverView({
     )
   }
 
+  const empty = hot.length === 0 && fresh.length === 0 && playlists.length === 0
+
   return (
     <div className="pt-6 lg:pt-8">
       {banners[0]?.type !== 'empty' && (
         <div className="relative h-44 overflow-hidden rounded-[1.6rem] border border-white/8 sm:h-56">
           {banners.map((b, i) => {
             const active = i === bannerIdx
-            const art = b.type === 'playlist' ? songs.find((s) => s.id === b.playlist.trackIds?.[0]) : b.song
+            const art = b.type === 'playlist' ? resolvePlaylistTracks(b.playlist, [])[0] : b.song
             const title = b.type === 'playlist' ? b.playlist.name : b.song.title
             const sub =
               b.type === 'playlist'
-                ? `${b.playlist.creatorName} 创建 · ${b.playlist.trackIds.length} 首`
-                : `${b.song.artist} · ${formatPlays(b.song.playCount)}次播放`
+                ? `${b.playlist.creatorName} 创建 · ${(b.playlist.trackIds || []).length} 首`
+                : `${b.song.artist} · ${b.song.platform === 'qq' ? 'QQ 音乐' : '网易云'}`
             return (
               <div
                 key={b.key}
@@ -87,13 +89,13 @@ export default function DiscoverView({
                 <div className="absolute inset-0 flex items-center">
                   <div className="relative z-10 max-w-xl px-6 sm:px-10">
                     <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-cyan-300">
-                      {b.type === 'playlist' ? '推荐歌单' : '推荐歌曲'}
+                      {b.type === 'playlist' ? '推荐歌单' : '全网热歌'}
                     </span>
                     <h2 className="mt-2 truncate text-2xl font-bold text-white sm:text-3xl">{title}</h2>
                     <p className="mt-1 truncate text-sm text-white/60">{sub}</p>
                     <button
                       onClick={() =>
-                        b.type === 'playlist' ? onOpenPlaylist(b.playlist) : onPlay(b.song, songs)
+                        b.type === 'playlist' ? onOpenPlaylist(b.playlist) : onPlay(b.song, hot)
                       }
                       className="btn-glow mt-4 flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"
                     >
@@ -129,9 +131,9 @@ export default function DiscoverView({
           <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
             {playlists.slice(0, 12).map((pl) => (
               <button key={pl.id} onClick={() => onOpenPlaylist(pl)} className="w-36 shrink-0 text-left">
-                <PlaylistCover playlist={pl} songs={songs} className="h-36 w-36 rounded-xl shadow-lg" />
+                <PlaylistCover playlist={pl} songs={[]} className="h-36 w-36 rounded-xl shadow-lg" />
                 <p className="mt-2 truncate text-sm font-semibold text-white">{pl.name}</p>
-                <p className="truncate text-xs text-mist-500">{pl.creatorName} · {pl.trackIds.length}首</p>
+                <p className="truncate text-xs text-mist-500">{pl.creatorName} · {(pl.trackIds || []).length}首</p>
               </button>
             ))}
           </div>
@@ -143,14 +145,14 @@ export default function DiscoverView({
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-lg font-bold text-white">
               <Trophy size={18} className="text-gold-300" weight="fill" />
-              热歌榜
+              全网热歌榜
             </h2>
             <button onClick={onGoRankings} className="flex items-center gap-0.5 text-xs text-mist-500 transition hover:text-white">
               完整榜单 <CaretRight size={13} />
             </button>
           </div>
           <div className="mt-3 space-y-1">
-            {hot.map((song, i) => {
+            {hot.slice(0, 10).map((song, i) => {
               const rank = i + 1
               return (
                 <div
@@ -171,9 +173,10 @@ export default function DiscoverView({
                     <p className={`truncate text-sm font-semibold ${currentTrack?.id === song.id ? 'text-cyan-300' : 'text-white'}`}>
                       {song.title}
                     </p>
-                    <p className="truncate text-xs text-mist-500">{song.artist}</p>
+                    <p className="truncate text-xs text-mist-500">
+                      {song.artist} · {song.platform === 'qq' ? 'QQ 音乐' : '网易云'}
+                    </p>
                   </div>
-                  <span className="shrink-0 text-xs tabular-nums text-mist-700">{formatPlays(song.playCount)}次</span>
                   <button
                     onClick={() => onPlay(song, hot)}
                     aria-label={`播放 ${song.title}`}
@@ -190,9 +193,12 @@ export default function DiscoverView({
 
       {fresh.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-lg font-bold text-white">新歌速递</h2>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-white">
+            <TrendUp size={18} className="text-cyan-300" />
+            云音乐新歌
+          </h2>
           <div className="glass mt-3 rounded-[1.6rem] p-2">
-            {fresh.map((song, i) => (
+            {fresh.slice(0, 10).map((song, i) => (
               <TrackRow
                 key={song.id}
                 track={song}
@@ -201,7 +207,6 @@ export default function DiscoverView({
                 isPlaying={isPlaying && currentTrack?.id === song.id}
                 isFavorite={isFav(song)}
                 hasLyrics={hasLyrics(song)}
-                plays={song.playCount}
                 onPlay={(t) => onPlay(t, fresh)}
                 onToggleFavorite={onToggleFavorite}
                 onAddToPlaylist={onAddToPlaylist}
@@ -211,10 +216,38 @@ export default function DiscoverView({
         </section>
       )}
 
-      {songs.length === 0 && playlists.length === 0 && (
+      {siteHot.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-bold text-white">本站热播</h2>
+          <div className="glass mt-3 rounded-[1.6rem] p-2">
+            {siteHot.slice(0, 5).map((song, i) => (
+              <TrackRow
+                key={song.id}
+                track={song}
+                index={i}
+                isActive={currentTrack?.id === song.id}
+                isPlaying={isPlaying && currentTrack?.id === song.id}
+                isFavorite={isFav(song)}
+                hasLyrics={hasLyrics(song)}
+                plays={song.plays}
+                onPlay={(t) => onPlay(t, siteHot)}
+                onToggleFavorite={onToggleFavorite}
+                onAddToPlaylist={onAddToPlaylist}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {empty && (
         <div className="glass mt-6 flex flex-col items-center gap-3 rounded-[1.8rem] p-12 text-center">
-          <p className="text-lg font-semibold text-white">这里还没有内容</p>
-          <p className="max-w-sm text-sm leading-relaxed text-mist-500">登录后上传第一首歌，或者创建第一个歌单吧</p>
+          <p className="text-lg font-semibold text-white">去云音乐找点好听的</p>
+          <p className="max-w-sm text-sm leading-relaxed text-mist-500">
+            搜索网易云 / QQ 音乐全曲库，或者创建一个歌单开始收藏
+          </p>
+          <button onClick={onGoCloud} className="btn-glow rounded-full px-6 py-2.5 text-sm font-semibold">
+            去云音乐
+          </button>
         </div>
       )}
     </div>

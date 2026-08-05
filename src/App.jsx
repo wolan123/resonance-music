@@ -8,7 +8,6 @@ import PlaylistsView from './components/PlaylistsView'
 import PlaylistDetailView from './components/PlaylistDetailView'
 import RankingsView from './components/RankingsView'
 import ProfileView from './components/ProfileView'
-import UploadView from './components/UploadView'
 import CloudView from './components/CloudView'
 import PlayerBar from './components/PlayerBar'
 import PlayerPage from './components/PlayerPage'
@@ -25,12 +24,14 @@ import {
   deleteSong,
   fetchMe,
   fetchPlaylists,
+  fetchRankings,
   fetchSongs,
   loginUser,
   logoutUser,
   registerUser,
   removeFromPlaylist,
   reportPlay,
+  resolvePlaylistTracks,
 } from './lib/api'
 import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
 import { cloudLyrics, isCloudTrack, resolveCloudTrack } from './lib/cloud'
@@ -91,6 +92,8 @@ export default function App() {
   const [songsLoading, setSongsLoading] = useState(true)
   const [playlists, setPlaylists] = useState([])
   const [playlistsLoading, setPlaylistsLoading] = useState(true)
+  const [rankings, setRankings] = useState({ hot: [], fresh: [], siteHot: [] })
+  const [rankingsLoading, setRankingsLoading] = useState(true)
 
   const [user, setUser] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
@@ -172,10 +175,22 @@ export default function App() {
     }
   }, [])
 
+  const loadRankings = useCallback(async () => {
+    setRankingsLoading(true)
+    try {
+      setRankings(await fetchRankings())
+    } catch {
+      setRankings({ hot: [], fresh: [], siteHot: [] })
+    } finally {
+      setRankingsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     loadSongs()
     loadPlaylists()
-  }, [loadSongs, loadPlaylists])
+    loadRankings()
+  }, [loadSongs, loadPlaylists, loadRankings])
 
   useEffect(() => {
     fetchMe()
@@ -203,7 +218,18 @@ export default function App() {
   const reportTrack = useCallback((track) => {
     if (!track) return
     setRecentPlays((prev) => [snapshotTrack(track), ...prev.filter((p) => p.id !== track.id)].slice(0, 50))
-    reportPlay(track.id)
+    const cloudTrack = isCloudTrack(track)
+      ? {
+          platform: track.platform,
+          platformId: track.platformId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          artwork: track.artwork || track.artworkUrl,
+          durationMs: track.durationMs,
+        }
+      : undefined
+    reportPlay(track.id, cloudTrack)
       .then((count) => {
         if (count != null) {
           setSongs((prev) => prev.map((s) => (s.id === track.id ? { ...s, playCount: count } : s)))
@@ -439,15 +465,6 @@ export default function App() {
     [audio, toast],
   )
 
-  const handleUploaded = useCallback(
-    (song) => {
-      toast(`《${song.title}》已经发光上线！`)
-      setView('discover')
-      loadSongs()
-    },
-    [loadSongs, toast],
-  )
-
   const toggleVisualizer = useCallback(() => {
     setVisualizerOn((v) => {
       const next = !v
@@ -500,13 +517,9 @@ export default function App() {
   const changeView = useCallback(
     (next) => {
       setPlaylistDetail(null)
-      if (next === 'upload' && !user) {
-        openAuth('login', '登录后就能上传音乐，上传的歌会署上你的名字')
-        return
-      }
       setView(next)
     },
-    [openAuth, user],
+    [],
   )
 
   const handleCreatePlaylist = useCallback(
@@ -534,7 +547,7 @@ export default function App() {
     async (playlistId) => {
       if (!addToTrack) return
       try {
-        const updated = await addToPlaylist(playlistId, addToTrack.id)
+        const updated = await addToPlaylist(playlistId, addToTrack.id, addToTrack)
         setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? updated : p)))
         toast(`已加入歌单《${updated.name}》`)
         setAddToTrack(null)
@@ -546,13 +559,15 @@ export default function App() {
   )
 
   const handleTogglePlaylistSong = useCallback(
-    async (trackId) => {
+    async (track) => {
       if (!playlistDetail) return
+      const trackId = track?.id
+      if (!trackId) return
       const inList = (playlistDetail.trackIds || []).includes(trackId)
       try {
         const updated = inList
           ? await removeFromPlaylist(playlistDetail.id, trackId)
-          : await addToPlaylist(playlistDetail.id, trackId)
+          : await addToPlaylist(playlistDetail.id, trackId, track)
         setPlaylists((prev) => prev.map((p) => (p.id === playlistDetail.id ? updated : p)))
         setPlaylistDetail(updated)
       } catch (e) {
@@ -685,7 +700,9 @@ export default function App() {
                   <DiscoverView
                     songs={songs}
                     playlists={playlists}
+                    rankings={rankings}
                     loading={songsLoading}
+                    rankingsLoading={rankingsLoading}
                     currentTrack={currentTrack}
                     isPlaying={isPlaying}
                     isFav={isFav}
@@ -696,6 +713,7 @@ export default function App() {
                     onOpenPlaylist={openPlaylist}
                     onGoPlaylists={() => setView('playlists')}
                     onGoRankings={() => setView('rankings')}
+                    onGoCloud={() => setView('cloud')}
                   />
                 </motion.div>
               )}
@@ -714,7 +732,13 @@ export default function App() {
               )}
               {view === 'rankings' && (
                 <motion.div key="rankings" {...anim}>
-                  <RankingsView songs={songs} currentTrack={currentTrack} isPlaying={isPlaying} onPlay={playTrack} />
+                  <RankingsView
+                    rankings={rankings}
+                    loading={rankingsLoading}
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    onPlay={playTrack}
+                  />
                 </motion.div>
               )}
               {view === 'cloud' && (
@@ -746,18 +770,7 @@ export default function App() {
                     onPlay={playTrack}
                     onToggleFavorite={toggleFavorite}
                     onAddToPlaylist={handleAddToPlaylistTrack}
-                    onDeleteSong={(track) => canDeleteSong(track) && handleDeleteSong(track)}
                     onOpenPlaylist={openPlaylist}
-                    onGoUpload={() => changeView('upload')}
-                  />
-                </motion.div>
-              )}
-              {view === 'upload' && (
-                <motion.div key="upload" {...anim}>
-                  <UploadView
-                    user={user}
-                    onUploaded={handleUploaded}
-                    onRequireAuth={() => openAuth('login', '登录后就能上传音乐')}
                   />
                 </motion.div>
               )}

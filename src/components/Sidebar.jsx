@@ -5,7 +5,6 @@ import {
   SignOut,
   Sparkle,
   Trophy,
-  UploadSimple,
   User,
   Waveform,
 } from '@phosphor-icons/react'
@@ -16,7 +15,6 @@ const NAV = [
   { key: 'rankings', label: '排行', icon: Trophy },
   { key: 'cloud', label: '云音乐', icon: Cloud },
   { key: 'profile', label: '我的', icon: User },
-  { key: 'upload', label: '上传', icon: UploadSimple },
 ]
 
 export default function Sidebar({
