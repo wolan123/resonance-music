@@ -1,6 +1,8 @@
 import {
   Cloud,
   Compass,
+  ChartPie,
+  MagnifyingGlass,
   Playlist,
   SignOut,
   Sparkle,
@@ -11,9 +13,11 @@ import {
 
 const NAV = [
   { key: 'discover', label: '发现', icon: Compass },
+  { key: 'search', label: '搜索', icon: MagnifyingGlass },
   { key: 'playlists', label: '歌单', icon: Playlist },
   { key: 'rankings', label: '排行', icon: Trophy },
   { key: 'cloud', label: '云音乐', icon: Cloud },
+  { key: 'report', label: '报告', icon: ChartPie },
   { key: 'profile', label: '我的', icon: User },
 ]
 

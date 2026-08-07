@@ -149,3 +149,25 @@ export async function fetchRankings() {
     siteHot: Array.isArray(data.siteHot) ? data.siteHot : [],
   }
 }
+
+async function userdataRequest(action, payload = {}) {
+  const res = await fetch('/api/userdata', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '操作失败')
+  return data
+}
+
+export const fetchUserData = () => userdataRequest('get')
+export const saveFavoritesRemote = (favorites) => userdataRequest('setFavorites', { favorites })
+export const saveRecentRemote = (recent) => userdataRequest('setRecent', { recent })
+
+export async function fetchReport() {
+  const res = await fetch('/api/report', { signal: AbortSignal.timeout(15000) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || '报告加载失败')
+  return data
+}

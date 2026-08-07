@@ -12,6 +12,7 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-only-secret'
 const ENC_KEY = scryptSync(AUTH_SECRET, 'lumen-auth-v1', 32)
 const USER_PREFIX = 'users/'
 const SESSION_PREFIX = 'users/sessions/'
+const USERDATA_PREFIX = 'users/data/'
 const SONG_PREFIX = 'songs/'
 const PLAYLIST_PREFIX = 'playlists/'
 const CLOUD_PREFIX = 'cloud/'
@@ -108,6 +109,20 @@ export async function readUserFile(pathname) {
 
 export async function writeUserFile(pathname, obj) {
   await writeBlob(pathname, encrypt(JSON.stringify(obj)), 'application/octet-stream')
+}
+
+export async function readUserData(userId, name, fallback = null) {
+  const text = await readBlobText(`${USERDATA_PREFIX}${userId}/${name}.json`)
+  if (!text) return fallback
+  try {
+    return JSON.parse(decrypt(text))
+  } catch {
+    return fallback
+  }
+}
+
+export async function writeUserData(userId, name, obj) {
+  await writeBlob(`${USERDATA_PREFIX}${userId}/${name}.json`, encrypt(JSON.stringify(obj)), 'application/octet-stream')
 }
 
 export async function findByUsername(username) {

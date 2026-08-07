@@ -167,6 +167,41 @@ export default function LightCanvas({ analyser, playing, mode = 'dynamic' }) {
         c.shadowBlur = 0
       }
 
+      // 波光：QQ 音乐同款流动光波（频谱驱动振幅的横向波纹）
+      if (mode === 'dynamic') {
+        const waveCount = 4
+        const baseY0 = h * 0.42
+        const waveGap = Math.min(h * 0.09, 60)
+        for (let wv = 0; wv < waveCount; wv += 1) {
+          const baseY = baseY0 + wv * waveGap + Math.sin(time * 0.7 + wv * 1.3) * 8
+          const hue = (265 + wv * 22 + Math.sin(time * 0.25) * 14) % 360
+          c.save()
+          c.globalCompositeOperation = 'lighter'
+          c.globalAlpha = 0.16 + level * 0.3
+          c.strokeStyle = `hsla(${hue}, 92%, 66%, 1)`
+          c.lineWidth = 2 + level * 4 + beatIntensity * 2
+          c.shadowColor = `hsla(${hue}, 92%, 60%, 0.9)`
+          c.shadowBlur = 16
+          c.beginPath()
+          const segments = Math.max(24, Math.floor(w / 28))
+          for (let i = 0; i <= segments; i += 1) {
+            const x = (i / segments) * w
+            const idx = Math.min(95, Math.floor((i / segments) * 96))
+            const v = data ? data[idx] / 255 : level
+            const y =
+              baseY +
+              Math.sin(x * 0.012 + time * 1.4 + wv * 1.1) * (12 + v * 34 + beatIntensity * 16) +
+              Math.sin(x * 0.004 + time * 0.5) * 10
+            if (i === 0) c.moveTo(x, y)
+            else c.lineTo(x, y)
+          }
+          c.stroke()
+          c.restore()
+        }
+        c.globalAlpha = 1
+        c.shadowBlur = 0
+      }
+
       // circular spectrum ring (dynamic / aurora)
       if (data && playing && (mode === 'dynamic' || mode === 'aurora')) {
         const ringR = Math.min(w, h) * (mode === 'dynamic' ? 0.4 : 0.46)

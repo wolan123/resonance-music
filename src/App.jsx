@@ -4,9 +4,11 @@ import { Sparkle, User, Waveform } from '@phosphor-icons/react'
 import Sidebar from './components/Sidebar'
 import MobileTabs from './components/MobileTabs'
 import DiscoverView from './components/DiscoverView'
+import SearchView from './components/SearchView'
 import PlaylistsView from './components/PlaylistsView'
 import PlaylistDetailView from './components/PlaylistDetailView'
 import RankingsView from './components/RankingsView'
+import ReportView from './components/ReportView'
 import ProfileView from './components/ProfileView'
 import CloudView from './components/CloudView'
 import PlayerBar from './components/PlayerBar'
@@ -25,39 +27,24 @@ import {
   fetchMe,
   fetchPlaylists,
   fetchRankings,
+  fetchReport,
   fetchSongs,
+  fetchUserData,
   loginUser,
   logoutUser,
   registerUser,
   removeFromPlaylist,
   reportPlay,
   resolvePlaylistTracks,
+  saveFavoritesRemote,
+  saveRecentRemote,
 } from './lib/api'
 import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
 import { cloudLyrics, isCloudTrack, resolveCloudTrack } from './lib/cloud'
 import { getAnalyser } from './lib/visualizer'
-import { loadFavorites, loadVolume, saveFavorites, saveVolume } from './lib/storage'
+import { loadVolume, saveVolume } from './lib/storage'
 
 const EFFECT_KEY = 'lumen.effect.v1'
-const RECENT_KEY = 'lumen.recent.v1'
-
-function loadRecent() {
-  try {
-    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
-    return Array.isArray(list) ? list : []
-  } catch {
-    return []
-  }
-}
-
-function saveRecent(list) {
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list))
-  } catch {
-    /* ignore */
-  }
-}
-
 function snapshotTrack(track) {
   return {
     id: track.id,
@@ -94,14 +81,16 @@ export default function App() {
   const [playlistsLoading, setPlaylistsLoading] = useState(true)
   const [rankings, setRankings] = useState({ hot: [], fresh: [], siteHot: [] })
   const [rankingsLoading, setRankingsLoading] = useState(true)
+  const [report, setReport] = useState(null)
+  const [reportLoading, setReportLoading] = useState(false)
 
   const [user, setUser] = useState(null)
   const [authOpen, setAuthOpen] = useState(false)
   const [authMode, setAuthMode] = useState('login')
   const [authMessage, setAuthMessage] = useState('')
 
-  const [favorites, setFavorites] = useState(loadFavorites)
-  const [recentPlays, setRecentPlays] = useState(loadRecent)
+  const [favorites, setFavorites] = useState([])
+  const [recentPlays, setRecentPlays] = useState([])
   const [lrcMap, setLrcMap] = useState({})
   const [toasts, setToasts] = useState([])
 
@@ -119,6 +108,7 @@ export default function App() {
 
   const queueRef = useRef(queue)
   const indexRef = useRef(index)
+  const recentRef = useRef(recentPlays)
   const lrcMapRef = useRef(lrcMap)
   const analyserRef = useRef(null)
   const visualizerOnRef = useRef(visualizerOn)
@@ -130,15 +120,14 @@ export default function App() {
     indexRef.current = index
   }, [index])
   useEffect(() => {
+    recentRef.current = recentPlays
+  }, [recentPlays])
+  useEffect(() => {
     lrcMapRef.current = lrcMap
   }, [lrcMap])
   useEffect(() => {
     visualizerOnRef.current = visualizerOn
   }, [visualizerOn])
-  useEffect(() => {
-    saveRecent(recentPlays)
-  }, [recentPlays])
-
   const toast = useCallback((text) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     setToasts((prev) => [...prev, { id, text }])
@@ -198,9 +187,41 @@ export default function App() {
       .catch(() => setUser(null))
   }, [])
 
+  const loadUserData = useCallback(async (uid) => {
+    if (!uid) {
+      setFavorites([])
+      setRecentPlays([])
+      setReport(null)
+      return
+    }
+    try {
+      const data = await fetchUserData()
+      setFavorites(data.favorites || [])
+      setRecentPlays(data.recent || [])
+    } catch {
+      setFavorites([])
+      setRecentPlays([])
+    }
+  }, [])
+
   useEffect(() => {
-    saveFavorites(favorites)
-  }, [favorites])
+    loadUserData(user?.id)
+  }, [user?.id, loadUserData])
+
+  const loadReport = useCallback(async () => {
+    if (!user) {
+      setReport(null)
+      return
+    }
+    setReportLoading(true)
+    try {
+      setReport(await fetchReport())
+    } catch {
+      setReport(null)
+    } finally {
+      setReportLoading(false)
+    }
+  }, [user])
 
   useEffect(() => {
     saveVolume(volume)
@@ -217,7 +238,9 @@ export default function App() {
 
   const reportTrack = useCallback((track) => {
     if (!track) return
-    setRecentPlays((prev) => [snapshotTrack(track), ...prev.filter((p) => p.id !== track.id)].slice(0, 50))
+    const nextRecent = [snapshotTrack(track), ...recentRef.current.filter((p) => p.id !== track.id)].slice(0, 50)
+    setRecentPlays(nextRecent)
+    if (user?.id) saveRecentRemote(nextRecent).catch(() => {})
     const cloudTrack = isCloudTrack(track)
       ? {
           platform: track.platform,
@@ -236,7 +259,7 @@ export default function App() {
         }
       })
       .catch(() => {})
-  }, [])
+  }, [user])
 
   const playAt = useCallback(
     async (i) => {
@@ -260,7 +283,7 @@ export default function App() {
       }
       audio.src = src
       audio.play().catch(() => {})
-      if (!isCloudTrack(track)) reportTrack(track)
+      reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
     [audio, ensureAnalyser, reportTrack, toast],
@@ -289,7 +312,7 @@ export default function App() {
       setPlayerOpen(true)
       audio.src = src
       audio.play().catch(() => {})
-      if (!isCloudTrack(track)) reportTrack(track)
+      reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
     [audio, ensureAnalyser, reportTrack, toast],
@@ -373,14 +396,27 @@ export default function App() {
 
   const isFav = useCallback((track) => favorites.some((f) => f.id === track.id), [favorites])
 
+  const openAuth = useCallback((mode = 'login', message = '') => {
+    setAuthMode(mode)
+    setAuthMessage(message)
+    setAuthOpen(true)
+  }, [])
+
   const toggleFavorite = useCallback(
     (track) => {
+      if (!user) {
+        openAuth('login', '登录后就能收藏歌曲，收藏属于你的账号')
+        return
+      }
       setFavorites((prev) => {
-        if (prev.some((f) => f.id === track.id)) return prev.filter((f) => f.id !== track.id)
-        return [{ ...snapshotTrack(track), addedAt: Date.now() }, ...prev]
+        const next = prev.some((f) => f.id === track.id)
+          ? prev.filter((f) => f.id !== track.id)
+          : [{ ...snapshotTrack(track), addedAt: Date.now() }, ...prev]
+        saveFavoritesRemote(next).catch(() => {})
+        return next
       })
     },
-    [],
+    [openAuth, user],
   )
 
   const getLrcText = useCallback((track) => {
@@ -477,12 +513,6 @@ export default function App() {
     })
   }, [audio])
 
-  const openAuth = useCallback((mode = 'login', message = '') => {
-    setAuthMode(mode)
-    setAuthMessage(message)
-    setAuthOpen(true)
-  }, [])
-
   const handleLogin = useCallback(
     async (username, password) => {
       const data = await loginUser(username, password)
@@ -517,9 +547,10 @@ export default function App() {
   const changeView = useCallback(
     (next) => {
       setPlaylistDetail(null)
+      if (next === 'report') loadReport()
       setView(next)
     },
-    [],
+    [loadReport],
   )
 
   const handleCreatePlaylist = useCallback(
@@ -717,6 +748,19 @@ export default function App() {
                   />
                 </motion.div>
               )}
+              {view === 'search' && (
+                <motion.div key="search" {...anim}>
+                  <SearchView
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    isFav={isFav}
+                    hasLyrics={getLrcText}
+                    onPlay={playTrack}
+                    onToggleFavorite={toggleFavorite}
+                    onAddToPlaylist={handleAddToPlaylistTrack}
+                  />
+                </motion.div>
+              )}
               {view === 'playlists' && (
                 <motion.div key="playlists" {...anim}>
                   <PlaylistsView
@@ -744,13 +788,19 @@ export default function App() {
               {view === 'cloud' && (
                 <motion.div key="cloud" {...anim}>
                   <CloudView
-                    currentTrack={currentTrack}
-                    isPlaying={isPlaying}
-                    isFav={isFav}
-                    hasLyrics={getLrcText}
-                    onPlay={playTrack}
-                    onToggleFavorite={toggleFavorite}
                     user={user}
+                    onGoSearch={() => setView('search')}
+                  />
+                </motion.div>
+              )}
+              {view === 'report' && (
+                <motion.div key="report" {...anim}>
+                  <ReportView
+                    report={report}
+                    loading={reportLoading}
+                    user={user}
+                    onOpenAuth={() => openAuth('login')}
+                    onPlay={playTrack}
                   />
                 </motion.div>
               )}
@@ -771,6 +821,7 @@ export default function App() {
                     onToggleFavorite={toggleFavorite}
                     onAddToPlaylist={handleAddToPlaylistTrack}
                     onOpenPlaylist={openPlaylist}
+                    onGoReport={() => changeView('report')}
                   />
                 </motion.div>
               )}

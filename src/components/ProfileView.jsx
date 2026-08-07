@@ -1,4 +1,4 @@
-import { Clock, Heart, MusicNotes, Playlist } from '@phosphor-icons/react'
+import { ChartPie, Clock, Heart, MusicNotes, Playlist } from '@phosphor-icons/react'
 import TrackRow from './TrackRow'
 import PlaylistCover from './PlaylistCover'
 
@@ -18,6 +18,7 @@ export default function ProfileView({
   onAddToPlaylist,
   onDeleteSong,
   onOpenPlaylist,
+  onGoReport,
 }) {
   if (!user) {
     return (
@@ -50,6 +51,20 @@ export default function ProfileView({
           </p>
         </div>
       </div>
+
+      <button
+        onClick={onGoReport}
+        className="glass mt-5 flex w-full items-center gap-4 rounded-[1.6rem] p-5 text-left transition hover:border-violet-400/40 hover:bg-white/[0.05] active:scale-[0.99]"
+      >
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400">
+          <ChartPie size={22} weight="fill" className="text-white" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-bold text-white">我的听歌报告</span>
+          <span className="mt-0.5 block text-xs text-mist-500">播放次数、最爱歌曲、歌手、平台分布，只统计你的账号</span>
+        </span>
+        <span className="btn-glow rounded-full px-4 py-2 text-xs font-semibold">查看</span>
+      </button>
 
       {recentPlays.length > 0 && (
         <div className="mt-7">
