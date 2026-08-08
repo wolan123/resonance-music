@@ -17,7 +17,7 @@ export default function FeedView({
 }) {
   const [idx, setIdx] = useState(0)
   const [dir, setDir] = useState(1)
-  const [started, setStarted] = useState(false)
+  const startedRef = useRef(false)
   const touchY = useRef(null)
   const listKey = useRef('')
 
@@ -48,7 +48,7 @@ export default function FeedView({
       firstRun.current = false
       return
     }
-    if (started && song) onSwipePlay(songs, idx)
+    if (startedRef.current && song) onSwipePlay(songs, idx)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx])
 
@@ -57,7 +57,7 @@ export default function FeedView({
     if (currentTrack?.id === song.id && isPlaying) {
       return
     }
-    setStarted(true)
+    startedRef.current = true
     onOpenTrack(song, songs)
   }, [song, songs, currentTrack?.id, isPlaying, onOpenTrack])
 
@@ -70,7 +70,7 @@ export default function FeedView({
       const dy = e.changedTouches[0].clientY - touchY.current
       touchY.current = null
       if (Math.abs(dy) < 60) return
-      setStarted(true)
+      startedRef.current = true
       go(dy < 0 ? 1 : -1)
     },
     [go],
@@ -79,7 +79,7 @@ export default function FeedView({
   const onWheel = useCallback(
     (e) => {
       if (Math.abs(e.deltaY) < 40) return
-      setStarted(true)
+      startedRef.current = true
       go(e.deltaY > 0 ? 1 : -1)
     },
     [go],
@@ -189,7 +189,7 @@ export default function FeedView({
           </button>
           <button
             onClick={() => {
-              setStarted(true)
+              startedRef.current = true
               go(1)
             }}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/8 text-mist-300 transition hover:bg-white/14 hover:text-white active:scale-90"
