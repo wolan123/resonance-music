@@ -169,7 +169,10 @@ export default function FeedView({
             </p>
           </div>
           <button
-            onClick={() => onToggleFavorite(song)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleFavorite(song)
+            }}
             aria-label={isFav(song) ? '取消收藏' : '收藏'}
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
               isFav(song) ? 'bg-pink-500/20 text-pink-400' : 'bg-white/8 text-white hover:bg-white/14'
@@ -181,7 +184,10 @@ export default function FeedView({
 
         <div className="mt-4 flex items-center gap-3">
           <button
-            onClick={playOrPause}
+            onClick={(e) => {
+              e.stopPropagation()
+              playOrPause()
+            }}
             className={`btn-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold ${
               active && isPlaying ? 'pulse-ring' : ''
             }`}
@@ -190,7 +196,8 @@ export default function FeedView({
             {active && isPlaying ? '正在播放' : '播放'}
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               startedRef.current = true
               go(1)
             }}
