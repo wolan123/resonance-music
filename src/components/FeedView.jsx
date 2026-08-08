@@ -12,6 +12,7 @@ export default function FeedView({
   isFav,
   onSwipePlay,
   onOpenTrack,
+  onTogglePlay,
   onToggleFavorite,
   onRefresh,
 }) {
@@ -55,11 +56,12 @@ export default function FeedView({
   const playOrPause = useCallback(() => {
     if (!song) return
     if (currentTrack?.id === song.id && isPlaying) {
+      onTogglePlay()
       return
     }
     startedRef.current = true
     onOpenTrack(song, songs)
-  }, [song, songs, currentTrack?.id, isPlaying, onOpenTrack])
+  }, [song, songs, currentTrack?.id, isPlaying, onOpenTrack, onTogglePlay])
 
   const onTouchStart = useCallback((e) => {
     touchY.current = e.touches[0].clientY

@@ -908,6 +908,7 @@ export default function App() {
                     isFav={isFav}
                     onSwipePlay={playFeedAt}
                     onOpenTrack={playTrack}
+                    onTogglePlay={togglePlay}
                     onToggleFavorite={toggleFavorite}
                     onRefresh={loadRecommend}
                   />
