@@ -1013,14 +1013,6 @@ export default function App() {
         onToggleVisualizer={toggleVisualizer}
         effectMode={effectMode}
         onEffectModeChange={setEffectMode}
-        quality={quality}
-        onQualityChange={changeQuality}
-        playbackRate={playbackRate}
-        onPlaybackRateChange={changeRate}
-        sleepEndsAt={sleepEndsAt}
-        sleepLabel={sleepLabel}
-        onArmSleep={armSleep}
-        onCancelSleep={clearSleepTimer}
       />
 
       <PlayerPage
@@ -1051,6 +1043,14 @@ export default function App() {
         onAddToPlaylist={handleAddToPlaylistTrack}
         effectMode={effectMode}
         onEffectModeChange={setEffectMode}
+        quality={quality}
+        onQualityChange={changeQuality}
+        playbackRate={playbackRate}
+        onPlaybackRateChange={changeRate}
+        sleepEndsAt={sleepEndsAt}
+        sleepLabel={sleepLabel}
+        onArmSleep={armSleep}
+        onCancelSleep={clearSleepTimer}
       />
 
       <QueuePanel
