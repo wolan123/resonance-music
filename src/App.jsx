@@ -651,7 +651,7 @@ export default function App() {
 
   return (
     <div className="relative min-h-[100dvh]">
-      {visualizerOn && <LightCanvas analyser={analyser} playing={isPlaying} mode={effectMode} />}
+      {visualizerOn && !playerOpen && <LightCanvas analyser={analyser} playing={isPlaying} mode={effectMode} />}
 
       <Sidebar
         view={view}
@@ -862,6 +862,8 @@ export default function App() {
         onToggleFavorite={toggleFavorite}
         isFavorite={currentTrack ? isFav(currentTrack) : false}
         audio={audio}
+        analyser={analyser}
+        visualizerOn={visualizerOn}
         volume={volume}
         onVolumeChange={setVolume}
         lrc={currentLrc}

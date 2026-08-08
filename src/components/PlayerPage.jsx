@@ -17,6 +17,7 @@ import { formatSeconds } from '../lib/format'
 import { activeLineIndex, parseLrc } from '../lib/lrc'
 import { EFFECT_MODES } from '../lib/effects'
 import { SparkleIcon } from './LightIcons'
+import LightCanvas from './LightCanvas'
 
 export default function PlayerPage({
   open,
@@ -30,6 +31,8 @@ export default function PlayerPage({
   onToggleFavorite,
   isFavorite,
   audio,
+  analyser,
+  visualizerOn,
   volume,
   onVolumeChange,
   lrc,
@@ -113,7 +116,7 @@ export default function PlayerPage({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 overflow-hidden bg-abyss-950/95 backdrop-blur-2xl"
+          className="fixed inset-0 z-50 overflow-hidden bg-abyss-950/55 backdrop-blur-xl"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 30 }}
@@ -127,6 +130,7 @@ export default function PlayerPage({
             className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-3xl"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-abyss-950/50 via-transparent to-abyss-950/90" />
+          {visualizerOn !== false && <LightCanvas analyser={analyser} playing={isPlaying} mode={effectMode} />}
 
           <div className="relative z-10 mx-auto flex h-full max-w-5xl flex-col px-4 pb-6 pt-4 sm:px-8">
             <div className="flex items-center gap-3">
