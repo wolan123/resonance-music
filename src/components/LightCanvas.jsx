@@ -138,11 +138,19 @@ export default function LightCanvas({ analyser, playing, mode = 'dynamic' }) {
           const by = (b.y + Math.cos(time * 0.03 * b.drift) * 0.04) * h
           const br = Math.max(w, h) * b.r
           const grad = c.createRadialGradient(bx, by, 0, bx, by, br)
-          grad.addColorStop(0, `hsla(${b.hue}, 65%, 50%, 0.045)`)
+          grad.addColorStop(0, `hsla(${b.hue}, 65%, 50%, 0.06)`)
           grad.addColorStop(1, 'hsla(0,0%,0%,0)')
           c.fillStyle = grad
           c.fillRect(0, 0, w, h)
         }
+        // 银河斜带：淡紫青斜向光带，模拟银河
+        const band = c.createLinearGradient(0, h * 0.72, w, h * 0.28)
+        band.addColorStop(0, 'rgba(139,92,246,0)')
+        band.addColorStop(0.45, 'rgba(139,92,246,0.055)')
+        band.addColorStop(0.55, 'rgba(103,232,249,0.055)')
+        band.addColorStop(1, 'rgba(139,92,246,0)')
+        c.fillStyle = band
+        c.fillRect(0, 0, w, h)
         c.save()
         for (const p of stars) {
           p.y -= p.vy * 0.12
@@ -155,12 +163,12 @@ export default function LightCanvas({ analyser, playing, mode = 'dynamic' }) {
           if (p.x < -0.02) p.x = 1.02
           if (p.x > 1.02) p.x = -0.02
           const twinkle = 0.4 + 0.6 * Math.sin(time * 0.8 + p.tw * 2.2)
-          c.globalAlpha = Math.min(1, p.a * 0.5 * twinkle)
+          c.globalAlpha = Math.min(1, p.a * 0.95 * twinkle)
           c.shadowColor = `hsla(${p.hue}, 90%, 80%, 1)`
-          c.shadowBlur = 4 + p.r * 2
+          c.shadowBlur = 6 + p.r * 4
           c.fillStyle = `hsla(${p.hue}, 95%, 88%, 1)`
           c.beginPath()
-          c.arc(p.x * w, p.y * h, p.r * (0.6 + twinkle * 0.5), 0, TAU)
+          c.arc(p.x * w, p.y * h, p.r * (1.1 + twinkle * 0.8), 0, TAU)
           c.fill()
         }
         c.restore()
