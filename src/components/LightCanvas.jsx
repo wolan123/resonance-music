@@ -130,19 +130,56 @@ export default function LightCanvas({ analyser, playing, mode = 'dynamic' }) {
       c.save()
       c.globalCompositeOperation = 'lighter'
 
-      // 暗色氛围光（QQ Wave 背景是深色沉浸底，光效集中在波光区）
-      for (const b of ambients) {
-        const bx = (b.x + Math.sin(time * 0.07 * b.drift + b.hue) * 0.08) * w
-        const by = (b.y + Math.cos(time * 0.05 * b.drift) * 0.06) * h
-        const br = Math.max(w, h) * b.r
-        const grad = c.createRadialGradient(bx, by, 0, bx, by, br)
-        grad.addColorStop(0, `hsla(${b.hue}, 70%, 52%, ${0.05 + level * 0.06})`)
-        grad.addColorStop(1, 'hsla(0,0%,0%,0)')
-        c.fillStyle = grad
-        c.fillRect(0, 0, w, h)
-      }
+      const calm = mode === 'galaxy' || !playing
+      if (calm) {
+        // MindRadio 同款银河暗场：星云微光 + 缓慢漂浮的细碎星尘
+        for (const b of ambients) {
+          const bx = (b.x + Math.sin(time * 0.04 * b.drift + b.hue) * 0.05) * w
+          const by = (b.y + Math.cos(time * 0.03 * b.drift) * 0.04) * h
+          const br = Math.max(w, h) * b.r
+          const grad = c.createRadialGradient(bx, by, 0, bx, by, br)
+          grad.addColorStop(0, `hsla(${b.hue}, 65%, 50%, 0.045)`)
+          grad.addColorStop(1, 'hsla(0,0%,0%,0)')
+          c.fillStyle = grad
+          c.fillRect(0, 0, w, h)
+        }
+        c.save()
+        for (const p of stars) {
+          p.y -= p.vy * 0.12
+          p.x += p.vx * 0.35 + Math.sin(time * 0.18 + p.tw) * 0.00008
+          p.tw += 0.004
+          if (p.y < -0.02) {
+            p.y = 1.02
+            p.x = Math.random()
+          }
+          if (p.x < -0.02) p.x = 1.02
+          if (p.x > 1.02) p.x = -0.02
+          const twinkle = 0.4 + 0.6 * Math.sin(time * 0.8 + p.tw * 2.2)
+          c.globalAlpha = Math.min(1, p.a * 0.5 * twinkle)
+          c.shadowColor = `hsla(${p.hue}, 90%, 80%, 1)`
+          c.shadowBlur = 4 + p.r * 2
+          c.fillStyle = `hsla(${p.hue}, 95%, 88%, 1)`
+          c.beginPath()
+          c.arc(p.x * w, p.y * h, p.r * (0.6 + twinkle * 0.5), 0, TAU)
+          c.fill()
+        }
+        c.restore()
+        c.globalAlpha = 1
+        c.shadowBlur = 0
+      } else {
+        // 暗色氛围光（QQ Wave 背景是深色沉浸底，光效集中在波光区）
+        for (const b of ambients) {
+          const bx = (b.x + Math.sin(time * 0.07 * b.drift + b.hue) * 0.08) * w
+          const by = (b.y + Math.cos(time * 0.05 * b.drift) * 0.06) * h
+          const br = Math.max(w, h) * b.r
+          const grad = c.createRadialGradient(bx, by, 0, bx, by, br)
+          grad.addColorStop(0, `hsla(${b.hue}, 70%, 52%, ${0.05 + level * 0.06})`)
+          grad.addColorStop(1, 'hsla(0,0%,0%,0)')
+          c.fillStyle = grad
+          c.fillRect(0, 0, w, h)
+        }
 
-      if (mode === 'dynamic') {
+        if (mode === 'dynamic') {
         // ========== WAVE 动感波光 ==========
         // 1) 深海涌动：3 层横向流动光波，低音驱动大振幅，QQ 同款紫蓝青配色
         const layers = 3
@@ -312,6 +349,7 @@ export default function LightCanvas({ analyser, playing, mode = 'dynamic' }) {
         c.restore()
         c.globalAlpha = 1
         c.shadowBlur = 0
+      }
       }
 
       // 四周暗角，聚焦波光
