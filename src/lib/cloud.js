@@ -27,6 +27,14 @@ export function clearCloudCookie(platform) {
   saveCloudCookie(platform, '')
 }
 
+// QQ 音乐式音质档位（网易云曲目生效）
+export const QUALITY_LEVELS = [
+  { key: 'standard', label: '标准' },
+  { key: 'higher', label: '高品' },
+  { key: 'exhigh', label: '超品' },
+  { key: 'lossless', label: '无损' },
+]
+
 export async function cloudRequest(platform, action, payload = {}) {
   const res = await fetch(`/api/cloud-${platform}`, {
     method: 'POST',
@@ -43,8 +51,11 @@ export async function cloudSearch(platform, keywords) {
   return data.songs || []
 }
 
-export async function resolveCloudTrack(track) {
-  const data = await cloudRequest(track.platform, 'url', { id: track.platformId })
+export async function resolveCloudTrack(track, level) {
+  const data = await cloudRequest(track.platform, 'url', {
+    id: track.platformId,
+    level: level || 'exhigh',
+  })
   if (!data.url) throw new Error('无法获取播放地址')
   return data.url
 }

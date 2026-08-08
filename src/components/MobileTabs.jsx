@@ -1,7 +1,8 @@
-import { Cloud, Compass, MagnifyingGlass, Playlist, Trophy, User } from '@phosphor-icons/react'
+import { Cloud, Compass, MagnifyingGlass, PlayCircle, Playlist, Trophy, User } from '@phosphor-icons/react'
 
 const TABS = [
   { key: 'discover', label: '发现', icon: Compass },
+  { key: 'feed', label: '推荐', icon: PlayCircle },
   { key: 'search', label: '搜索', icon: MagnifyingGlass },
   { key: 'playlists', label: '歌单', icon: Playlist },
   { key: 'rankings', label: '排行', icon: Trophy },

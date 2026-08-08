@@ -2,22 +2,28 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ArrowLeft,
+  Gauge,
   Heart,
   Pause,
   Play,
   Plus,
+  SlidersHorizontal,
   SkipBack,
   SkipForward,
   SpeakerHigh,
   SpeakerX,
   TextAa,
+  Timer,
 } from '@phosphor-icons/react'
 import { artworkOf } from '../lib/api'
 import { formatSeconds } from '../lib/format'
 import { activeLineIndex, parseLrc } from '../lib/lrc'
 import { EFFECT_MODES } from '../lib/effects'
+import { QUALITY_LEVELS } from '../lib/cloud'
 import { SparkleIcon } from './LightIcons'
 import LightCanvas from './LightCanvas'
+
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
 
 export default function PlayerPage({
   open,
@@ -41,12 +47,30 @@ export default function PlayerPage({
   onAddToPlaylist,
   effectMode,
   onEffectModeChange,
+  quality,
+  onQualityChange,
+  playbackRate,
+  onPlaybackRateChange,
+  sleepEndsAt,
+  sleepLabel,
+  onArmSleep,
+  onCancelSleep,
 }) {
   const [duration, setDuration] = useState(0)
   const [showLyrics, setShowLyrics] = useState(true)
   const [fetchState, setFetchState] = useState('idle')
   const [fetchError, setFetchError] = useState('')
+  const [menu, setMenu] = useState(null)
+  const [tick, setTick] = useState(0)
   const itemRefs = useRef({})
+  const lyricsRef = useRef(null)
+  const touchRef = useRef(null)
+
+  useEffect(() => {
+    if (sleepEndsAt <= 0) return
+    const id = setInterval(() => setTick(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [sleepEndsAt])
 
   useEffect(() => {
     const el = audio
@@ -112,6 +136,67 @@ export default function PlayerPage({
     }
   }
 
+  const sleepActive = sleepEndsAt > 0
+  const sleepRemaining = sleepActive && sleepLabel !== '当前歌曲后' ? Math.max(0, sleepEndsAt - tick) : 0
+  const sleepText =
+    sleepLabel === '当前歌曲后'
+      ? '当前歌曲后暂停'
+      : sleepActive
+        ? `${Math.floor(sleepRemaining / 60000)}:${String(Math.floor((sleepRemaining % 60000) / 1000)).padStart(2, '0')}`
+        : ''
+
+  function inScrollable(el) {
+    let node = el
+    while (node && node !== document.body) {
+      if (node === lyricsRef.current) return true
+      node = node.parentElement
+    }
+    return false
+  }
+
+  // 汽水式上下滑切歌：滚轮/触摸，歌词区域到顶/到底才切歌，避免和歌词滚动打架
+  function onWheel(e) {
+    if (e.target && e.target.tagName === 'INPUT') return
+    if (Math.abs(e.deltaY) < 24) return
+    const el = lyricsRef.current
+    if (el) {
+      const atTop = el.scrollTop <= 0
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+      if (e.deltaY < 0 && !atTop) return
+      if (e.deltaY > 0 && !atBottom) return
+    }
+    if (e.deltaY > 0) onNext()
+    else onPrev()
+  }
+
+  function onTouchStart(e) {
+    if (e.target && e.target.tagName === 'INPUT') {
+      touchRef.current = null
+      return
+    }
+    touchRef.current = {
+      y: e.touches[0].clientY,
+      scrollTop: inScrollable(e.target) ? lyricsRef.current.scrollTop : null,
+    }
+  }
+
+  function onTouchEnd(e) {
+    const t = touchRef.current
+    touchRef.current = null
+    if (!t) return
+    const dy = e.changedTouches[0].clientY - t.y
+    if (Math.abs(dy) < 60) return
+    const el = lyricsRef.current
+    if (t.scrollTop !== null && el) {
+      const atTop = el.scrollTop <= 0
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+      if (dy > 0 && !atTop) return
+      if (dy < 0 && !atBottom) return
+    }
+    if (dy < 0) onNext()
+    else onPrev()
+  }
+
   return (
     <AnimatePresence>
       {open && (
@@ -123,6 +208,9 @@ export default function PlayerPage({
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           role="dialog"
           aria-label="播放页"
+          onWheel={onWheel}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
         >
           <img
             src={artworkOf(track)}
@@ -192,7 +280,7 @@ export default function PlayerPage({
 
                 <div className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-black/25 px-4 py-3">
                   {showLyrics ? (
-                    <div className="h-full overflow-y-auto">
+                    <div ref={lyricsRef} className="h-full overflow-y-auto">
                       {lines.length > 0 ? (
                         <div className="space-y-3 text-center">
                           {lines.map((line, i) => (
@@ -261,6 +349,131 @@ export default function PlayerPage({
                   aria-label="播放进度"
                 />
                 <span className="w-9 text-xs tabular-nums text-mist-500">{formatSeconds(duration || max)}</span>
+              </div>
+
+              <div className="relative mt-3">
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setMenu(menu === 'quality' ? null : 'quality')}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
+                      menu === 'quality' ? 'bg-violet-500/30 text-white' : 'bg-white/6 text-mist-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <SlidersHorizontal size={13} />
+                    音质 · {QUALITY_LEVELS.find((q) => q.key === quality)?.label || quality}
+                  </button>
+                  <button
+                    onClick={() => setMenu(menu === 'speed' ? null : 'speed')}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
+                      menu === 'speed' ? 'bg-violet-500/30 text-white' : 'bg-white/6 text-mist-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Gauge size={13} />
+                    倍速 · {playbackRate}x
+                  </button>
+                  <button
+                    onClick={() => setMenu(menu === 'sleep' ? null : 'sleep')}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition active:scale-95 ${
+                      menu === 'sleep' || sleepActive ? 'bg-violet-500/30 text-white' : 'bg-white/6 text-mist-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Timer size={13} />
+                    {sleepActive ? `定时 ${sleepText}` : '定时关闭'}
+                  </button>
+                  {sleepActive && (
+                    <button
+                      onClick={onCancelSleep}
+                      className="flex items-center rounded-full bg-rose-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/25 active:scale-95"
+                    >
+                      取消
+                    </button>
+                  )}
+                </div>
+
+                {menu && (
+                  <div className="absolute bottom-full left-1/2 z-20 mb-2 w-56 -translate-x-1/2 rounded-2xl border border-white/10 bg-abyss-900/95 p-2 shadow-2xl backdrop-blur-xl">
+                    {menu === 'quality' && (
+                      <>
+                        <p className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-wider text-mist-500">音质 · 网易云曲目生效</p>
+                        {QUALITY_LEVELS.map((q) => (
+                          <button
+                            key={q.key}
+                            onClick={() => {
+                              onQualityChange(q.key)
+                              setMenu(null)
+                            }}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                              quality === q.key ? 'bg-violet-500/20 text-white' : 'text-mist-300 hover:bg-white/8 hover:text-white'
+                            }`}
+                          >
+                            {q.label}
+                            {quality === q.key && <span className="text-cyan-300">✓</span>}
+                          </button>
+                        ))}
+                        {track.platform !== 'netease' && (
+                          <p className="px-2 pb-1 pt-1 text-[10px] text-mist-700">QQ 曲目暂按默认音质播放</p>
+                        )}
+                      </>
+                    )}
+                    {menu === 'speed' && (
+                      <>
+                        <p className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-wider text-mist-500">播放倍速</p>
+                        {SPEEDS.map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => {
+                              onPlaybackRateChange(r)
+                              setMenu(null)
+                            }}
+                            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                              playbackRate === r ? 'bg-violet-500/20 text-white' : 'text-mist-300 hover:bg-white/8 hover:text-white'
+                            }`}
+                          >
+                            {r}x
+                            {playbackRate === r && <span className="text-cyan-300">✓</span>}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {menu === 'sleep' && (
+                      <>
+                        <p className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-wider text-mist-500">定时关闭</p>
+                        {[10, 20, 30, 60].map((min) => (
+                          <button
+                            key={min}
+                            onClick={() => {
+                              onArmSleep(min)
+                              setMenu(null)
+                            }}
+                            className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-mist-300 transition hover:bg-white/8 hover:text-white"
+                          >
+                            {min} 分钟
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => {
+                            onArmSleep(0)
+                            setMenu(null)
+                          }}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-mist-300 transition hover:bg-white/8 hover:text-white"
+                        >
+                          播完当前歌曲
+                        </button>
+                        {sleepActive && (
+                          <button
+                            onClick={() => {
+                              onCancelSleep()
+                              setMenu(null)
+                            }}
+                            className="mt-1 flex w-full items-center justify-center rounded-xl bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-300 transition hover:bg-rose-500/25"
+                          >
+                            取消定时
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="mt-3 flex items-center justify-between gap-3">

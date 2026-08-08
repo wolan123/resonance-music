@@ -11,6 +11,7 @@ import RankingsView from './components/RankingsView'
 import ReportView from './components/ReportView'
 import ProfileView from './components/ProfileView'
 import CloudView from './components/CloudView'
+import FeedView from './components/FeedView'
 import PlayerBar from './components/PlayerBar'
 import PlayerPage from './components/PlayerPage'
 import LightCanvas from './components/LightCanvas'
@@ -41,10 +42,13 @@ import {
 } from './lib/api'
 import { fetchLyrics as fetchLyricsClient } from './lib/lyricsApi'
 import { cloudLyrics, isCloudTrack, resolveCloudTrack } from './lib/cloud'
+import { buildRecommendations } from './lib/recommend'
 import { getAnalyser } from './lib/visualizer'
 import { loadVolume, saveVolume } from './lib/storage'
 
 const EFFECT_KEY = 'lumen.effect.v1'
+const QUALITY_KEY = 'lumen.quality.v1'
+const RATE_KEY = 'lumen.rate.v1'
 function snapshotTrack(track) {
   return {
     id: track.id,
@@ -101,10 +105,29 @@ export default function App() {
   const [volume, setVolume] = useState(loadVolume)
   const [visualizerOn, setVisualizerOn] = useState(true)
   const [effectMode, setEffectMode] = useState(() => localStorage.getItem(EFFECT_KEY) || 'dynamic')
+  const [quality, setQuality] = useState(() => {
+    try {
+      return localStorage.getItem(QUALITY_KEY) || 'exhigh'
+    } catch {
+      return 'exhigh'
+    }
+  })
+  const [playbackRate, setPlaybackRate] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(RATE_KEY))
+      return v >= 0.5 && v <= 2 ? v : 1
+    } catch {
+      return 1
+    }
+  })
+  const [sleepEndsAt, setSleepEndsAt] = useState(0)
+  const [sleepLabel, setSleepLabel] = useState('')
   const [analyser, setAnalyser] = useState(null)
   const [playerOpen, setPlayerOpen] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
   const [addToTrack, setAddToTrack] = useState(null)
+  const [recommend, setRecommend] = useState([])
+  const [recommendLoading, setRecommendLoading] = useState(false)
 
   const queueRef = useRef(queue)
   const indexRef = useRef(index)
@@ -112,6 +135,8 @@ export default function App() {
   const lrcMapRef = useRef(lrcMap)
   const analyserRef = useRef(null)
   const visualizerOnRef = useRef(visualizerOn)
+  const sleepTimerRef = useRef(0)
+  const sleepOnEndRef = useRef(false)
 
   useEffect(() => {
     queueRef.current = queue
@@ -223,10 +248,104 @@ export default function App() {
     }
   }, [user])
 
+  const loadRecommend = useCallback(async () => {
+    setRecommendLoading(true)
+    try {
+      const songs = await buildRecommendations({
+        userId: user?.id,
+        favorites,
+        recent: recentPlays,
+        rankings,
+      })
+      setRecommend(songs)
+    } catch {
+      setRecommend([])
+    } finally {
+      setRecommendLoading(false)
+    }
+  }, [user?.id, favorites, recentPlays, rankings])
+
+  const changeQuality = useCallback(
+    async (q) => {
+      setQuality(q)
+      const track = indexRef.current >= 0 ? queueRef.current[indexRef.current] : null
+      if (!track || !isCloudTrack(track)) return
+      const wasPlaying = !audio.paused
+      const pos = audio.currentTime
+      try {
+        const src = await resolveCloudTrack(track, q)
+        const updated = queueRef.current.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
+        queueRef.current = updated
+        setQueue(updated)
+        audio.src = src
+        if (pos > 0 && Number.isFinite(pos)) audio.currentTime = pos
+        if (wasPlaying) audio.play().catch(() => {})
+      } catch (e) {
+        toast(e.message || '音质切换失败')
+      }
+    },
+    [audio, toast],
+  )
+
+  const changeRate = useCallback((r) => {
+    setPlaybackRate(r)
+    try {
+      localStorage.setItem(RATE_KEY, String(r))
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const clearSleepTimer = useCallback(() => {
+    clearTimeout(sleepTimerRef.current)
+    sleepTimerRef.current = 0
+    sleepOnEndRef.current = false
+    setSleepEndsAt(0)
+    setSleepLabel('')
+  }, [])
+
+  const armSleep = useCallback(
+    (minutes) => {
+      clearTimeout(sleepTimerRef.current)
+      sleepTimerRef.current = 0
+      sleepOnEndRef.current = false
+      if (minutes <= 0) {
+        sleepOnEndRef.current = true
+        setSleepEndsAt(Date.now())
+        setSleepLabel('当前歌曲后')
+        toast('将在当前歌曲播放完后自动暂停')
+        return
+      }
+      const end = Date.now() + minutes * 60000
+      setSleepEndsAt(end)
+      setSleepLabel(`${minutes} 分钟`)
+      sleepTimerRef.current = setTimeout(() => {
+        audio.pause()
+        setSleepEndsAt(0)
+        setSleepLabel('')
+        toast('定时关闭：已暂停播放')
+      }, minutes * 60000)
+      toast(`定时 ${minutes} 分钟后关闭`)
+    },
+    [audio, toast],
+  )
+
   useEffect(() => {
     saveVolume(volume)
     audio.volume = volume
   }, [volume, audio])
+
+  useEffect(() => {
+    audio.playbackRate = playbackRate
+  }, [playbackRate, audio])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(QUALITY_KEY, quality)
+    } catch {
+      /* ignore */
+    }
+  }, [quality])
 
   useEffect(() => {
     try {
@@ -272,7 +391,7 @@ export default function App() {
       let src = track.audioUrl
       if (!src && isCloudTrack(track)) {
         try {
-          src = await resolveCloudTrack(track)
+          src = await resolveCloudTrack(track, quality)
           const updated = list.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
           queueRef.current = updated
           setQueue(updated)
@@ -286,17 +405,17 @@ export default function App() {
       reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio, ensureAnalyser, reportTrack, toast],
+    [audio, ensureAnalyser, reportTrack, toast, quality],
   )
 
-  const playTrack = useCallback(
-    async (track, list) => {
+  const startTrack = useCallback(
+    async (track, list, openPlayer) => {
       let target = list && list.length ? list : queueRef.current
       if (!target.length) return
       let src = track.audioUrl
       if (!src && isCloudTrack(track)) {
         try {
-          src = await resolveCloudTrack(track)
+          src = await resolveCloudTrack(track, quality)
           target = target.map((t) => (t.id === track.id ? { ...t, audioUrl: src } : t))
         } catch (e) {
           toast(e.message || '播放地址获取失败')
@@ -309,13 +428,23 @@ export default function App() {
       const safe = idx < 0 ? 0 : idx
       indexRef.current = safe
       setIndex(safe)
-      setPlayerOpen(true)
+      if (openPlayer) setPlayerOpen(true)
       audio.src = src
       audio.play().catch(() => {})
       reportTrack(track)
       if (visualizerOnRef.current && !analyserRef.current) ensureAnalyser()
     },
-    [audio, ensureAnalyser, reportTrack, toast],
+    [audio, ensureAnalyser, reportTrack, toast, quality],
+  )
+
+  const playTrack = useCallback((track, list) => startTrack(track, list, true), [startTrack])
+
+  const playFeedAt = useCallback(
+    (list, i) => {
+      if (!list || !list.length) return
+      startTrack(list[i], list, false)
+    },
+    [startTrack],
   )
 
   const next = useCallback(() => playAt(indexRef.current + 1), [playAt])
@@ -369,7 +498,16 @@ export default function App() {
     const onPlay = () => setIsPlaying(true)
     const onPause = () => setIsPlaying(false)
     const onTime = () => setCurrentTime(audio.currentTime || 0)
-    const onEnded = () => next()
+    const onEnded = () => {
+      if (sleepOnEndRef.current) {
+        sleepOnEndRef.current = false
+        setSleepEndsAt(0)
+        setSleepLabel('')
+        toast('定时关闭：已播放完当前歌曲')
+        return
+      }
+      next()
+    }
     audio.addEventListener('play', onPlay)
     audio.addEventListener('pause', onPause)
     audio.addEventListener('timeupdate', onTime)
@@ -380,7 +518,7 @@ export default function App() {
       audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('ended', onEnded)
     }
-  }, [audio, next])
+  }, [audio, next, toast])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -389,10 +527,20 @@ export default function App() {
         e.preventDefault()
         togglePlay()
       }
+      if (e.code.startsWith('Arrow') && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        if (!playerOpen) return
+        if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') {
+          e.preventDefault()
+          prev()
+        } else if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
+          e.preventDefault()
+          next()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePlay])
+  }, [togglePlay, next, prev, playerOpen])
 
   const isFav = useCallback((track) => favorites.some((f) => f.id === track.id), [favorites])
 
@@ -548,9 +696,10 @@ export default function App() {
     (next) => {
       setPlaylistDetail(null)
       if (next === 'report') loadReport()
+      if (next === 'feed') loadRecommend()
       setView(next)
     },
-    [loadReport],
+    [loadReport, loadRecommend],
   )
 
   const handleCreatePlaylist = useCallback(
@@ -745,6 +894,22 @@ export default function App() {
                     onGoPlaylists={() => setView('playlists')}
                     onGoRankings={() => setView('rankings')}
                     onGoCloud={() => setView('cloud')}
+                    onGoFeed={() => changeView('feed')}
+                  />
+                </motion.div>
+              )}
+              {view === 'feed' && (
+                <motion.div key="feed" {...anim}>
+                  <FeedView
+                    songs={recommend}
+                    loading={recommendLoading}
+                    currentTrack={currentTrack}
+                    isPlaying={isPlaying}
+                    isFav={isFav}
+                    onSwipePlay={playFeedAt}
+                    onOpenTrack={playTrack}
+                    onToggleFavorite={toggleFavorite}
+                    onRefresh={loadRecommend}
                   />
                 </motion.div>
               )}
@@ -848,6 +1013,14 @@ export default function App() {
         onToggleVisualizer={toggleVisualizer}
         effectMode={effectMode}
         onEffectModeChange={setEffectMode}
+        quality={quality}
+        onQualityChange={changeQuality}
+        playbackRate={playbackRate}
+        onPlaybackRateChange={changeRate}
+        sleepEndsAt={sleepEndsAt}
+        sleepLabel={sleepLabel}
+        onArmSleep={armSleep}
+        onCancelSleep={clearSleepTimer}
       />
 
       <PlayerPage

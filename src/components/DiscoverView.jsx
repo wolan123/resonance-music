@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CaretRight, Play, Trophy, TrendUp } from '@phosphor-icons/react'
+import { CaretRight, Play, Sparkle, Trophy, TrendUp } from '@phosphor-icons/react'
 import TrackRow from './TrackRow'
 import PlaylistCover from './PlaylistCover'
 import { SkeletonRows } from './Skeleton'
@@ -24,6 +24,7 @@ export default function DiscoverView({
   onGoPlaylists,
   onGoRankings,
   onGoCloud,
+  onGoFeed,
 }) {
   const [bannerIdx, setBannerIdx] = useState(0)
 
@@ -119,6 +120,24 @@ export default function DiscoverView({
           </div>
         </div>
       )}
+
+      <section className="mt-6">
+        <button
+          onClick={onGoFeed}
+          className="glass flex w-full items-center justify-between gap-3 rounded-[1.6rem] p-4 text-left transition hover:bg-white/[0.06] active:scale-[0.99] sm:p-5"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400 text-white">
+              <Sparkle size={20} weight="fill" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-white">猜你喜欢 · 每日推荐</p>
+              <p className="truncate text-xs text-mist-500">按你的收藏和最近播放生成，上下滑沉浸式试听</p>
+            </div>
+          </div>
+          <span className="btn-glow shrink-0 rounded-full px-4 py-2 text-xs font-semibold">去听听</span>
+        </button>
+      </section>
 
       {playlists.length > 0 && (
         <section className="mt-8">

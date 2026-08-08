@@ -4,6 +4,7 @@ import {
   ChartPie,
   MagnifyingGlass,
   Playlist,
+  PlayCircle,
   SignOut,
   Sparkle,
   Trophy,
@@ -13,6 +14,7 @@ import {
 
 const NAV = [
   { key: 'discover', label: '发现', icon: Compass },
+  { key: 'feed', label: '推荐', icon: PlayCircle },
   { key: 'search', label: '搜索', icon: MagnifyingGlass },
   { key: 'playlists', label: '歌单', icon: Playlist },
   { key: 'rankings', label: '排行', icon: Trophy },
